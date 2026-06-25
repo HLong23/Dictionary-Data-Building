@@ -1,0 +1,20 @@
+Dọn dẹp code
+- Xóa EntityFactory.java và folder factory/ — không được dùng
+- Xóa method define(Request), field pronounceAudioPath, các method renamePronounceAudio, deletePronounceAudio — thừa
+- Entity giờ tạo trực tiếp bằng new thay vì Factory pattern
+
+Cải thiện UI/format
+- Menu edit chuyển từ W/P/R/A → số 1/2/3/4
+- Export dictionary.txt làm đẹp hơn: emoji, border box, separator
+- Format định nghĩa gộp lại thành
+
+Synonyms / Antonyms
+- Đổi separator sang = thay vì dấu phẩy
+- readRelation() tìm nhóm chứa từ và trả về các từ còn lại trong nhóm
+- Đổi cấu trúc từ LinkedList<String> sang Map<String, LinkedList<String>> để phân loại theo word type (noun1=, verb1=...)
+- Cập nhật hiển thị trong LookupCommand và LookupShowCommand
+
+Còn dở
+- DefineCommand chưa có logic nhập synonyms/antonyms theo word type mới
+- Thêm activity diagram và class diagram
+-

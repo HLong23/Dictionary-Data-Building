@@ -26,8 +26,6 @@ public class DictionaryController {
 
         commands.put("help", new HelpCommand());
 
-        commands.put("upload pronounce", new UploadPronounceCommand());
-
         commands.put("lookupshow", new LookupShowCommand(scanner));
     }
 

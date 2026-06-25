@@ -11,8 +11,6 @@ public interface DictionaryService {
 
     java.util.List<Word> lookupSimilar(String keyword);
 
-    void define(Request request);
-
     void save(Word word);
 
     void rename(String oldKeyword, String newKeyword);
@@ -21,7 +19,7 @@ public interface DictionaryService {
 
     void export();
 
-    void uploadPronounce(String keyword, String sourcePath);
+    void copyPronounceFile(String keyword, String sourcePath);
 
     void export(String path);
 }

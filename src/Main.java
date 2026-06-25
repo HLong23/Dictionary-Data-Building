@@ -45,19 +45,6 @@ public class Main {
 
     private static Request parseRequest(String input) {
 
-        if (input.startsWith("upload ")) {
-            String[] uploadParts = input.split("\\s+", 4);
-
-            if (uploadParts.length < 4 || !uploadParts[1].equals("pronounce")) {
-                throw new IllegalArgumentException("Usage: upload pronounce <word> <file-path>");
-            }
-
-            ArrayList<String> params = new ArrayList<>();
-            params.add(uploadParts[3]);
-
-            return new Request("upload pronounce", uploadParts[2], params);
-        }
-
         String[] parts = input.split("\\s+");
 
         String action = parts[0].toLowerCase();

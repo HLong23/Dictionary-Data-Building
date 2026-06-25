@@ -31,9 +31,8 @@ public class LookupCommand extends Command {
         System.out.println("Word: " + word.getKeyword());
 
         printIfNotBlank("Pronounce", word.getPronunciation());
-        printList("Synonyms", word.getSynonyms());
-        printList("Antonyms", word.getAntonyms());
-        printIfNotBlank("Pronounce audio", word.getPronounceAudioPath());
+        printRelationMap("Synonyms", word.getSynonyms());
+        printRelationMap("Antonyms", word.getAntonyms());
 
         for (int i = 0; i < word.getDefinitions().size(); i++) {
             Definition definition = word.getDefinitions().get(i);
@@ -111,9 +110,15 @@ public class LookupCommand extends Command {
         }
     }
 
-    private void printList(String label, java.util.List<String> values) {
-        if (values != null && !values.isEmpty()) {
-            System.out.println(label + ": " + String.join(", ", values));
+    private void printRelationMap(String label, java.util.Map<String, java.util.LinkedList<String>> relationMap) {
+        if (relationMap != null && !relationMap.isEmpty()) {
+            for (java.util.Map.Entry<String, java.util.LinkedList<String>> entry : relationMap.entrySet()) {
+                String wordType = entry.getKey();
+                java.util.LinkedList<String> values = entry.getValue();
+                if (!values.isEmpty()) {
+                    System.out.println(label + " (" + wordType + "): " + String.join(", ", values));
+                }
+            }
         }
     }
 }

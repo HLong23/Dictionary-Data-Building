@@ -18,6 +18,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -84,24 +86,12 @@ public class DictionaryServiceImpl implements DictionaryService {
     }
 
     @Override
-    public void define(Request request) {
-        Word word = lookup(request.getKeyword());
-
-        if (word == null) {
-            word = new Word(request.getKeyword());
-        }
-
-        save(word);
-    }
-
-    @Override
     public void save(Word word) {
         ensureDatabaseDir();
 
         Properties properties = new Properties();
         properties.setProperty("word", valueOrEmpty(word.getKeyword()));
         properties.setProperty("pronounce", valueOrEmpty(word.getPronunciation()));
-        properties.setProperty("pronounceAudio", valueOrEmpty(word.getPronounceAudioPath()));
         properties.setProperty("definition.count", String.valueOf(word.getDefinitions().size()));
 
         for (int i = 0; i < word.getDefinitions().size(); i++) {
@@ -139,7 +129,18 @@ public class DictionaryServiceImpl implements DictionaryService {
 
         Word word = readWord(oldWordPath, loadRelationProperties(SYNONYMS_FILE), loadRelationProperties(ANTONYMS_FILE));
         word.setKeyword(newKeyword);
-        renamePronounceAudio(word, newKeyword);
+        
+        // Rename pronounce audio file if exists
+        Path oldAudioPath = Paths.get(DATABASE_DIR, sanitizeFileName(oldKeyword) + ".mp3");
+        Path newAudioPath = Paths.get(DATABASE_DIR, sanitizeFileName(newKeyword) + ".mp3");
+        if (Files.exists(oldAudioPath) && !samePath(oldAudioPath, newAudioPath)) {
+            try {
+                Files.move(oldAudioPath, newAudioPath, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                throw new RuntimeException("Cannot rename pronunciation audio", e);
+            }
+        }
+        
         save(word);
 
         if (!samePath(oldWordPath, newWordPath)) {
@@ -156,13 +157,13 @@ public class DictionaryServiceImpl implements DictionaryService {
 
     @Override
     public void drop(String keyword) {
-        Word word = lookup(keyword);
-
         try {
             Files.deleteIfExists(wordFile(keyword));
             removeRelationKeyword(SYNONYMS_FILE, keyword);
             removeRelationKeyword(ANTONYMS_FILE, keyword);
-            deletePronounceAudio(word);
+            // Delete pronounce audio file if exists
+            Path audioPath = Paths.get(DATABASE_DIR, sanitizeFileName(keyword) + ".mp3");
+            Files.deleteIfExists(audioPath);
         } catch (IOException e) {
             throw new RuntimeException("Cannot drop word: " + keyword, e);
         }
@@ -188,28 +189,19 @@ public class DictionaryServiceImpl implements DictionaryService {
     }
 
     @Override
-    public void uploadPronounce(String keyword, String sourcePath) {
-        Word word = lookup(keyword);
-
-        if (word == null) {
-            throw new IllegalArgumentException("Word not found: " + keyword);
-        }
-
+    public void copyPronounceFile(String keyword, String sourcePath) {
         Path source = Paths.get(sourcePath);
 
         if (!Files.exists(source)) {
             throw new IllegalArgumentException("File not found: " + sourcePath);
         }
 
-        String fileName = sanitizeFileName(keyword) + getExtension(source.getFileName().toString());
-        Path target = Paths.get(DATABASE_DIR, fileName);
+        Path target = Paths.get(DATABASE_DIR, sanitizeFileName(keyword) + ".mp3");
 
         try {
             Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-            word.setPronounceAudioPath(target.toString());
-            save(word);
         } catch (IOException e) {
-            throw new RuntimeException("Cannot upload pronunciation file", e);
+            throw new RuntimeException("Cannot copy pronunciation file", e);
         }
     }
 
@@ -248,7 +240,6 @@ public class DictionaryServiceImpl implements DictionaryService {
 
         Word word = new Word(properties.getProperty("word", ""));
         word.setPronunciation(properties.getProperty("pronounce", ""));
-        word.setPronounceAudioPath(properties.getProperty("pronounceAudio", ""));
         readDefinitions(properties, word);
         word.setSynonyms(readRelation(synonyms, word.getKeyword()));
         word.setAntonyms(readRelation(antonyms, word.getKeyword()));
@@ -257,21 +248,30 @@ public class DictionaryServiceImpl implements DictionaryService {
     }
 
     private void writeWord(PrintWriter writer, Word word) {
-        writer.println("Word: " + valueOrEmpty(word.getKeyword()));
-        writer.println("Pronounce: " + valueOrEmpty(word.getPronunciation()));
-        writeList(writer, "Synonyms", word.getSynonyms());
-        writeList(writer, "Antonyms", word.getAntonyms());
+        writer.println("═══════════════════════════════════════════════════════════════");
+        writer.println("📖 " + valueOrEmpty(word.getKeyword()));
+        if (!valueOrEmpty(word.getPronunciation()).isEmpty()) {
+            writer.println("   🔊 " + valueOrEmpty(word.getPronunciation()));
+        }
+        
+        writeList(writer, "   🔗 Synonyms", word.getSynonyms());
+        writeList(writer, "   🔀 Antonyms", word.getAntonyms());
 
         for (int i = 0; i < word.getDefinitions().size(); i++) {
             Definition definition = word.getDefinitions().get(i);
             Sentence sentence = definition.getSentence();
 
-            writer.println("Definition " + (i + 1) + ":");
-            writer.println("Class: " + valueOrEmpty(definition.getType()));
-            writer.println("Meaning: " + valueOrEmpty(definition.getMeaning()));
-            writer.println("Example: " + (sentence == null ? "" : valueOrEmpty(sentence.getContent())));
-            writer.println("Example's meaning: " + (sentence == null ? "" : valueOrEmpty(sentence.getMeaning())));
+            writer.println("   ┌─────────────────────────────────────────────────────");
+            writer.println("   │ " + (i + 1) + ". " + valueOrEmpty(definition.getType()) + " - " + valueOrEmpty(definition.getMeaning()));
+            if (sentence != null && !valueOrEmpty(sentence.getContent()).isEmpty()) {
+                writer.println("   │    💬 " + valueOrEmpty(sentence.getContent()));
+                if (!valueOrEmpty(sentence.getMeaning()).isEmpty()) {
+                    writer.println("   │       " + valueOrEmpty(sentence.getMeaning()));
+                }
+            }
+            writer.println("   └─────────────────────────────────────────────────────");
         }
+        writer.println();
     }
 
     private void readDefinitions(Properties properties, Word word) {
@@ -320,80 +320,112 @@ public class DictionaryServiceImpl implements DictionaryService {
         return properties;
     }
 
-    private LinkedList<String> readRelation(Properties properties, String keyword) {
+    private Map<String, LinkedList<String>> readRelation(Properties properties, String keyword) {
+        String sanitizedKeyword = sanitizeFileName(keyword).toLowerCase();
+        Map<String, LinkedList<String>> result = new HashMap<>();
 
-        LinkedList<String> values = new LinkedList<>();
-        String raw = properties.getProperty(sanitizeFileName(keyword), "");
+        for (String key : properties.stringPropertyNames()) {
+            String raw = properties.getProperty(key, "");
+            String[] words = raw.split("=");
 
-        for (String value : raw.split(",")) {
-            String clean = value.trim();
-
-            if (!clean.isEmpty()) {
-                values.add(clean);
+            for (String word : words) {
+                String cleanWord = word.trim().toLowerCase();
+                if (cleanWord.equals(sanitizedKeyword)) {
+                    // Found the group containing this keyword
+                    // Extract word type from key (e.g., "noun1" -> "noun")
+                    String wordType = extractWordType(key);
+                    
+                    LinkedList<String> synonyms = new LinkedList<>();
+                    for (String w : words) {
+                        String cleanW = w.trim();
+                        if (!cleanW.isEmpty() && !cleanW.equalsIgnoreCase(keyword)) {
+                            synonyms.add(cleanW);
+                        }
+                    }
+                    
+                    if (!synonyms.isEmpty()) {
+                        result.put(wordType, synonyms);
+                    }
+                }
             }
         }
 
-        return values;
+        return result;
+    }
+
+    private String extractWordType(String key) {
+        // Extract word type from key like "noun1", "verb2", "adj3" -> "noun", "verb", "adj"
+        for (int i = 0; i < key.length(); i++) {
+            if (Character.isDigit(key.charAt(i))) {
+                return key.substring(0, i).toLowerCase();
+            }
+        }
+        return key.toLowerCase();
     }
 
     private void migrateRelationKeyword(String fileName, String oldKeyword, String newKeyword) {
         Properties properties = loadRelationProperties(fileName);
-        String oldKey = sanitizeFileName(oldKeyword);
-        String newKey = sanitizeFileName(newKeyword);
-
-        Set<String> newValues = parseValues(properties.getProperty(newKey, ""));
-        newValues.addAll(parseValues(properties.getProperty(oldKey, "")));
-        properties.remove(oldKey);
-
-        if (!newValues.isEmpty()) {
-            properties.setProperty(newKey, joinValues(newValues));
-        }
-
         replaceRelationValue(properties, oldKeyword, newKeyword);
         storeRelationProperties(fileName, properties);
     }
 
     private void removeRelationKeyword(String fileName, String keyword) {
         Properties properties = loadRelationProperties(fileName);
-        properties.remove(sanitizeFileName(keyword));
         removeRelationValue(properties, keyword);
         storeRelationProperties(fileName, properties);
     }
 
     private void replaceRelationValue(Properties properties, String oldKeyword, String newKeyword) {
         for (String key : properties.stringPropertyNames()) {
-            Set<String> values = new LinkedHashSet<>();
+            String[] words = properties.getProperty(key, "").split("=");
+            Set<String> updatedWords = new LinkedHashSet<>();
+            boolean found = false;
 
-            for (String value : parseValues(properties.getProperty(key, ""))) {
-                if (sameKeyword(value, oldKeyword)) {
-                    values.add(newKeyword);
-                } else {
-                    values.add(value);
+            for (String word : words) {
+                String cleanWord = word.trim();
+                if (!cleanWord.isEmpty()) {
+                    if (sameKeyword(cleanWord, oldKeyword)) {
+                        updatedWords.add(newKeyword);
+                        found = true;
+                    } else {
+                        updatedWords.add(cleanWord);
+                    }
                 }
             }
 
-            if (values.isEmpty()) {
-                properties.remove(key);
-            } else {
-                properties.setProperty(key, joinValues(values));
+            if (found) {
+                if (updatedWords.isEmpty()) {
+                    properties.remove(key);
+                } else {
+                    properties.setProperty(key, String.join("=", updatedWords));
+                }
             }
         }
     }
 
     private void removeRelationValue(Properties properties, String keyword) {
         for (String key : properties.stringPropertyNames()) {
-            Set<String> values = new LinkedHashSet<>();
+            String[] words = properties.getProperty(key, "").split("=");
+            Set<String> updatedWords = new LinkedHashSet<>();
+            boolean found = false;
 
-            for (String value : parseValues(properties.getProperty(key, ""))) {
-                if (!sameKeyword(value, keyword)) {
-                    values.add(value);
+            for (String word : words) {
+                String cleanWord = word.trim();
+                if (!cleanWord.isEmpty()) {
+                    if (!sameKeyword(cleanWord, keyword)) {
+                        updatedWords.add(cleanWord);
+                    } else {
+                        found = true;
+                    }
                 }
             }
 
-            if (values.isEmpty()) {
-                properties.remove(key);
-            } else {
-                properties.setProperty(key, joinValues(values));
+            if (found) {
+                if (updatedWords.isEmpty()) {
+                    properties.remove(key);
+                } else {
+                    properties.setProperty(key, String.join("=", updatedWords));
+                }
             }
         }
     }
@@ -401,7 +433,7 @@ public class DictionaryServiceImpl implements DictionaryService {
     private Set<String> parseValues(String raw) {
         Set<String> values = new LinkedHashSet<>();
 
-        for (String value : valueOrEmpty(raw).split(",")) {
+        for (String value : valueOrEmpty(raw).split("=")) {
             String clean = value.trim();
 
             if (!clean.isEmpty()) {
@@ -413,7 +445,7 @@ public class DictionaryServiceImpl implements DictionaryService {
     }
 
     private String joinValues(Set<String> values) {
-        return String.join(",", values);
+        return String.join("=", values);
     }
 
     private void storeRelationProperties(String fileName, Properties properties) {
@@ -482,68 +514,8 @@ public class DictionaryServiceImpl implements DictionaryService {
         }
     }
 
-    private void renamePronounceAudio(Word word, String newKeyword) {
-        String audioPath = word.getPronounceAudioPath();
-
-        if (isBlank(audioPath)) {
-            return;
-        }
-
-        Path oldAudioPath = resolvePath(audioPath);
-
-        if (!isInsideDatabase(oldAudioPath) || !Files.exists(oldAudioPath)) {
-            return;
-        }
-
-        Path newAudioPath = Paths.get(DATABASE_DIR, sanitizeFileName(newKeyword)
-                + getExtension(oldAudioPath.getFileName().toString()));
-
-        if (samePath(oldAudioPath, newAudioPath)) {
-            word.setPronounceAudioPath(newAudioPath.toString());
-            return;
-        }
-
-        if (Files.exists(newAudioPath)) {
-            throw new IllegalArgumentException("Pronunciation audio already exists: " + newAudioPath);
-        }
-
-        try {
-            Files.move(oldAudioPath, newAudioPath);
-            word.setPronounceAudioPath(newAudioPath.toString());
-        } catch (IOException e) {
-            throw new RuntimeException("Cannot rename pronunciation audio", e);
-        }
-    }
-
-    private void deletePronounceAudio(Word word) throws IOException {
-        if (word == null || isBlank(word.getPronounceAudioPath())) {
-            return;
-        }
-
-        Path audioPath = resolvePath(word.getPronounceAudioPath());
-
-        if (isInsideDatabase(audioPath)) {
-            Files.deleteIfExists(audioPath);
-        }
-    }
-
     private boolean samePath(Path first, Path second) {
-        return resolvePath(first.toString()).equals(resolvePath(second.toString()));
-    }
-
-    private boolean isInsideDatabase(Path path) {
-        Path databasePath = Paths.get(DATABASE_DIR).toAbsolutePath().normalize();
-        return path.toAbsolutePath().normalize().startsWith(databasePath);
-    }
-
-    private Path resolvePath(String path) {
-        Path resolved = Paths.get(path);
-
-        if (!resolved.isAbsolute()) {
-            resolved = Paths.get("").toAbsolutePath().resolve(resolved);
-        }
-
-        return resolved.normalize();
+        return first.toAbsolutePath().normalize().equals(second.toAbsolutePath().normalize());
     }
 
     private boolean sameKeyword(String first, String second) {

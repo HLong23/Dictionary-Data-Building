@@ -1,0 +1,55 @@
+@startuml Dictionary_UML_UseCaseDiagram
+!theme plain
+title Dictionary Data Building - Use Case Diagram
+
+left to right direction
+
+actor "User" as User
+
+rectangle "Dictionary System" {
+    usecase "help" as Help
+    usecase "lookup <word>" as Lookup
+    usecase "lookupshow <word>" as LookupSelect
+    usecase "define <word>" as Define
+    usecase "drop <word>" as Drop
+    usecase "export" as Export
+}
+
+User --> Help
+User --> Lookup
+User --> LookupSelect
+User --> Define
+User --> Drop
+User --> Export
+
+note right of Help
+  Hiển thị danh sách
+  lệnh và cú pháp
+end note
+
+note right of Lookup
+  Tra cứu từ chính xác,
+  hiển thị nghĩa + ví dụ
+end note
+
+note right of LookupSelect
+  Tra cứu và hiển thị
+  từ gần giống
+end note
+
+note right of Define
+  Thêm mới hoặc cập nhật
+  từ với nghĩa và ví dụ
+end note
+
+note right of Drop
+  Xóa từ và toàn bộ
+  dữ liệu liên quan
+end note
+
+note right of Export
+  Xuất từ điển ra
+  file dictionary.txt
+end note
+
+@enduml

@@ -3,33 +3,34 @@ package entities;
  * Word - Đối tượng từ trong từ điển với định nghĩa, phát âm, từ đồng nghĩa/trái nghĩa
  */
 import java.util.LinkedList;
+import java.util.Map;
+import java.util.HashMap;
 
 public class Word {
 
     private String keyword;
     private String pronunciation;
-    private String pronounceAudioPath;
     private LinkedList<Definition> definitions;
-    private LinkedList<String> synonyms;
-    private LinkedList<String> antonyms;
+    private Map<String, LinkedList<String>> synonyms;
+    private Map<String, LinkedList<String>> antonyms;
 
     public Word(String keyword) {
         this.keyword = keyword;
         definitions = new LinkedList<>();
-        synonyms = new LinkedList<>();
-        antonyms = new LinkedList<>();
+        synonyms = new HashMap<>();
+        antonyms = new HashMap<>();
     }
 
     public void addDefinition(Definition definition) {
         definitions.add(definition);
     }
 
-    public void addSynonym(String synonym) {
-        synonyms.add(synonym);
+    public void addSynonym(String wordType, String synonym) {
+        synonyms.computeIfAbsent(wordType, k -> new LinkedList<>()).add(synonym);
     }
 
-    public void addAntonym(String antonym) {
-        antonyms.add(antonym);
+    public void addAntonym(String wordType, String antonym) {
+        antonyms.computeIfAbsent(wordType, k -> new LinkedList<>()).add(antonym);
     }
 
     public String getKeyword() {
@@ -44,19 +45,19 @@ public class Word {
         return definitions;
     }
 
-    public LinkedList<String> getSynonyms() {
+    public Map<String, LinkedList<String>> getSynonyms() {
         return synonyms;
     }
 
-    public void setSynonyms(LinkedList<String> synonyms) {
+    public void setSynonyms(Map<String, LinkedList<String>> synonyms) {
         this.synonyms = synonyms;
     }
 
-    public LinkedList<String> getAntonyms() {
+    public Map<String, LinkedList<String>> getAntonyms() {
         return antonyms;
     }
 
-    public void setAntonyms(LinkedList<String> antonyms) {
+    public void setAntonyms(Map<String, LinkedList<String>> antonyms) {
         this.antonyms = antonyms;
     }
 
@@ -66,13 +67,5 @@ public class Word {
 
     public void setPronunciation(String pronunciation) {
         this.pronunciation = pronunciation;
-    }
-
-    public String getPronounceAudioPath() {
-        return pronounceAudioPath;
-    }
-
-    public void setPronounceAudioPath(String pronounceAudioPath) {
-        this.pronounceAudioPath = pronounceAudioPath;
     }
 }

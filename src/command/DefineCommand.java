@@ -41,17 +41,20 @@ public class DefineCommand extends Command {
         System.out.println("Word: " + word.getKeyword());
         word.setPronunciation(readOptional("Pronounce: "));
         word.addDefinition(readDefinition());
+        handlePronounceFile(word);
     }
 
     private void editWord(Word word) {
         while (true) {
             System.out.println("Choose item to edit:");
-            System.out.println("W. Word");
-            System.out.println("P. Pronounce");
-            System.out.println("A. Add definition");
+            System.out.println("1. Word");
+            System.out.println("2. Pronounce");
+            System.out.println("3. Pronounce file");
+            System.out.println("4. Add definition");
 
+            int offset = 4;
             for (int i = 0; i < word.getDefinitions().size(); i++) {
-                System.out.println((i + 1) + ". " + definitionLabel(word, i));
+                System.out.println((offset + i + 1) + ". " + definitionLabel(word, i));
             }
 
             System.out.println("0. Cancel");
@@ -59,19 +62,26 @@ public class DefineCommand extends Command {
 
             String choice = scanner.nextLine().trim();
 
-            if (choice.equalsIgnoreCase("w")) {
+            if (choice.equals("1")) {
                 editKeyword(word);
                 return;
             }
 
-            if (choice.equalsIgnoreCase("p")) {
+            if (choice.equals("2")) {
                 word.setPronunciation(readOptional("Pronounce: "));
                 service.save(word);
                 System.out.println("Updated: " + word.getKeyword());
                 return;
             }
 
-            if (choice.equalsIgnoreCase("a")) {
+            if (choice.equals("3")) {
+                handlePronounceFile(word);
+                service.save(word);
+                System.out.println("Updated: " + word.getKeyword());
+                return;
+            }
+
+            if (choice.equals("4")) {
                 word.addDefinition(readDefinition());
                 service.save(word);
                 System.out.println("Updated: " + word.getKeyword());
@@ -85,7 +95,7 @@ public class DefineCommand extends Command {
 
             int definitionIndex;
             try {
-                definitionIndex = Integer.parseInt(choice) - 1;
+                definitionIndex = Integer.parseInt(choice) - offset - 1;
             } catch (NumberFormatException e) {
                 System.out.println("Invalid choice.");
                 continue;
@@ -171,7 +181,7 @@ public class DefineCommand extends Command {
     }
 
     private Definition readDefinition() {
-        String type = readRequired("Class: ");
+        String type = readValidClass();
         String meaning = readRequired("Meaning: ");
         String example = readOptional("Example: ");
         String exampleMeaning = readOptional("Example's meaning: ");
@@ -180,7 +190,7 @@ public class DefineCommand extends Command {
     }
 
     private void replaceDefinitionFields(Definition definition) {
-        definition.setType(readRequired("Class: "));
+        definition.setType(readValidClass());
         definition.setMeaning(readRequired("Meaning: "));
         Sentence sentence = sentence(definition);
         sentence.setContent(readOptional("Example: "));
@@ -271,5 +281,42 @@ public class DefineCommand extends Command {
 
     private String valueOrEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private void handlePronounceFile(Word word) {
+        System.out.print("Pronounce file path (or Enter to skip): ");
+        String filePath = scanner.nextLine().trim();
+
+        if (!filePath.isBlank()) {
+            try {
+                service.copyPronounceFile(word.getKeyword(), filePath);
+                System.out.println("Pronounce file copied successfully.");
+            } catch (Exception e) {
+                System.out.println("Error copying pronounce file: " + e.getMessage());
+            }
+        }
+    }
+
+    private String readValidClass() {
+        String[] validClasses = {"Noun", "Pronoun", "Verb", "Adjective", "Adverb", "Preposition", "Conjunction", "Interjection"};
+
+        while (true) {
+            System.out.println("Choose class:");
+            for (int i = 0; i < validClasses.length; i++) {
+                System.out.println((i + 1) + ". " + validClasses[i]);
+            }
+            System.out.print("Enter number (1-8): ");
+
+            String choice = scanner.nextLine().trim();
+            try {
+                int index = Integer.parseInt(choice) - 1;
+                if (index >= 0 && index < validClasses.length) {
+                    return validClasses[index];
+                }
+            } catch (NumberFormatException e) {
+                // Invalid input, loop again
+            }
+            System.out.println("Invalid choice.");
+        }
     }
 }

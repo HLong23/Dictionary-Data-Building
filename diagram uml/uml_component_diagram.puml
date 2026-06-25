@@ -1,0 +1,267 @@
+@startuml Dictionary_UML_ComponentDiagram
+!theme plain
+title Dictionary Data Building - Component Diagram
+
+package "Presentation Layer" {
+    component [Console UI] as ConsoleUI
+}
+
+package "Application Layer" {
+    component [Main\nEntry Point] as Main
+    component [Command\nDispatcher] as Dispatcher
+}
+
+package "Command Layer" {
+    component [LookupCommand] as CmdLookup
+    component [DefineCommand] as CmdDefine
+    component [DropCommand] as CmdDrop
+    component [ExportCommand] as CmdExport
+    component [HelpCommand] as CmdHelp
+    component [LookupShowCommand] as CmdLookupShow
+}
+
+package "Business Logic Layer" {
+    component [DictionaryServiceImpl] as ServiceImpl
+}
+
+package "Data Access Layer" {
+    component [File\nOperations] as FileOps
+}
+
+package "Data Entities" {
+    component [Word] as Word
+    component [Definition] as Definition
+    component [Sentence] as Sentence
+    component [Request] as Request
+}
+
+package "Utilities" {
+    component [EntityFactory] as Factory
+}
+
+package "Storage" {
+    database [database/\n(word files)] as DB
+    database [dictionary.txt\n(export)] as ExportFile
+}
+
+'============================
+' Relationships
+'============================
+
+ConsoleUI --> Main : input
+
+Main --> Dispatcher : routes
+
+Dispatcher --> CmdLookup
+Dispatcher --> CmdDefine
+Dispatcher --> CmdDrop
+Dispatcher --> CmdExport
+Dispatcher --> CmdHelp
+Dispatcher --> CmdLookupShow
+
+CmdLookup --> ServiceImpl
+CmdDefine --> ServiceImpl
+CmdDrop --> ServiceImpl
+CmdExport --> ServiceImpl
+CmdLookupShow --> ServiceImpl
+
+ServiceImpl --> FileOps
+
+FileOps --> DB
+FileOps --> ExportFile
+
+ServiceImpl --> Word
+ServiceImpl --> Definition
+ServiceImpl --> Sentence
+
+Word --> Definition
+Definition --> Sentence
+
+ServiceImpl -.-> Factory
+
+Factory --> Word
+Factory --> Definition
+Factory --> Sentence
+
+'============================
+' Notes - Presentation & Application
+'============================
+
+note top of ConsoleUI
+  **Presentation Layer**
+  ──────────────────────
+  Nhận lệnh từ người dùng qua stdin.
+  Hiển thị kết quả ra stdout.
+  Tương tác qua Console.
+end note
+
+note top of Dispatcher
+  **Application Layer — Command Dispatcher**
+  ──────────────────────────────────────────
+  Phân tích chuỗi lệnh nhập vào.
+  Ánh xạ tên lệnh → Command object.
+  Chuyển yêu cầu đến Command phù hợp.
+end note
+
+'============================
+' Notes - Command Layer (mỗi command)
+'============================
+
+note bottom of CmdLookup
+  **lookup <word>**
+  ─────────────────
+  Tra cứu từ trong từ điển.
+  Trả về danh sách nghĩa
+  và ví dụ minh họa (nếu có).
+  Thông báo nếu từ không tồn tại.
+end note
+
+note bottom of CmdLookupShow
+  **lookupshow <word>**
+  ─────────────────────
+  Tra cứu từ và hiển thị
+  chi tiết đầy đủ: số thứ tự,
+  nghĩa, câu ví dụ theo từng
+  định nghĩa.
+end note
+
+note bottom of CmdDefine
+  **define <word>**
+  ─────────────────
+  Thêm hoặc cập nhật từ
+  vào từ điển. Cho phép nhập
+  nhiều nghĩa và câu ví dụ.
+  Lưu xuống file trong database/.
+end note
+
+note bottom of CmdDrop
+  **drop <word>**
+  ───────────────
+  Xóa từ khỏi từ điển.
+  Xóa file tương ứng
+  trong thư mục database/.
+  Thông báo nếu từ không tồn tại.
+end note
+
+note bottom of CmdExport
+  **export**
+  ──────────
+  Xuất toàn bộ nội dung từ điển
+  ra file dictionary.txt.
+  Định dạng dễ đọc cho người dùng.
+end note
+
+note bottom of CmdHelp
+  **help**
+  ────────
+  Hiển thị danh sách lệnh
+  và cú pháp sử dụng.
+  Không tương tác với Service.
+end note
+
+'============================
+' Notes - Business Logic
+'============================
+
+note right of ServiceImpl
+  **Singleton Pattern**
+  ─────────────────────
+  Thread-safe instance duy nhất.
+  Single access point cho toàn hệ thống.
+  Duy trì trạng thái từ điển trong runtime.
+
+  **Nghiệp vụ xử lý:**
+  • lookup / lookupshow → tìm kiếm từ
+  • define → thêm / cập nhật từ
+  • drop → xóa từ
+  • export → xuất toàn bộ dữ liệu
+end note
+
+'============================
+' Notes - Data Access
+'============================
+
+note right of FileOps
+  **Data Access Layer**
+  ─────────────────────
+  Đọc file từ database/.
+  Ghi / xóa file theo từng từ.
+  Ghi file dictionary.txt khi export.
+end note
+
+'============================
+' Notes - Entities
+'============================
+
+note bottom of Word
+  **Entity: Word**
+  ─────────────────
+  Đại diện cho một từ vựng.
+  Thuộc tính: từ gốc (string).
+  Quan hệ 1-N với Definition.
+end note
+
+note bottom of Definition
+  **Entity: Definition**
+  ──────────────────────
+  Đại diện cho một nghĩa của từ.
+  Thuộc tính: nội dung nghĩa.
+  Quan hệ 1-N với Sentence.
+end note
+
+note bottom of Sentence
+  **Entity: Sentence**
+  ─────────────────────
+  Câu ví dụ minh họa cho Definition.
+  Thuộc tính: nội dung câu ví dụ.
+  Quan hệ N-1 với Definition.
+end note
+
+'============================
+' Notes - Utilities
+'============================
+
+note right of Factory
+  **Factory Method Pattern**
+  ──────────────────────────
+  Tạo các thực thể: Word, Definition, Sentence.
+end note
+
+'============================
+' Notes - Storage
+'============================
+
+note bottom of DB
+  **Persistent Storage — database/**
+  ───────────────────────────────────
+  Mỗi từ được lưu thành một file riêng.
+  Tên file = tên từ (vd: hello.txt).
+  Chứa toàn bộ nghĩa và câu ví dụ.
+end note
+
+note bottom of ExportFile
+  **Export Storage — dictionary.txt**
+  ────────────────────────────────────
+  File tổng hợp xuất bởi lệnh export.
+  Định dạng dễ đọc, có cấu trúc rõ ràng.
+  Ghi đè mỗi lần export được thực thi.
+end note
+
+'============================
+' Notes - Request Flow
+'============================
+
+note right of Dispatcher
+  **Request Flow (luồng xử lý)**
+  ────────────────────────────────
+  [1] User nhập lệnh vào Console
+  [2] ConsoleUI đọc input → gửi lên Main
+  [3] Main chuyển cho Dispatcher phân tích
+  [4] Dispatcher ánh xạ → gọi Command
+  [5] Command gọi DictionaryServiceImpl
+  [6] Service xử lý nghiệp vụ
+  [7] FileOperations đọc/ghi Database
+  [8] Response trả ngược theo chiều ngược lại
+end note
+
+@enduml

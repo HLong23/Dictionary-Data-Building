@@ -9,7 +9,6 @@
 - `define <word>` - Định nghĩa từ
 - `drop <word>` - Xóa từ
 - `export` - Xuất dữ liệu từ điển
-- `upload pronounce <word> <file-path>` - Upload file phát âm
 - `help` - Xem hướng dẫn
 - `exit` - Thoát
 
