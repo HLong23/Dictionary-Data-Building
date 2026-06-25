@@ -1,0 +1,663 @@
+================================================================================
+TÀI LIỆU CHÚ THÍCH CHI TIẾT - ỨNG DỤNG TỪ ĐIỂN (Dictionary Data Building)
+================================================================================
+
+CẤU TRÚC DỰ ÁN:
+----------------
+src/
+├── Main.java                          - Điểm nhập chính
+├── command/                           - Các lệnh xử lý
+│   ├── Command.java                   - Lớp trừu tượng cơ sở
+│   ├── DefineCommand.java             - Lệnh thêm/sửa từ
+│   ├── DropCommand.java               - Lệnh xóa từ
+│   ├── ExportCommand.java             - Lệnh xuất từ điển
+│   ├── HelpCommand.java               - Lệnh hiển thị trợ giúp
+│   ├── LookupCommand.java             - Lệnh tra cứu từ
+│   ├── LookupShowCommand.java         - Lệnh tìm kiếm tương tự
+│   └── UploadPronounceCommand.java    - Lệnh tải file phát âm
+├── controller/
+│   └── DictionaryController.java      - Điều phối lệnh
+├── entities/                          - Các đối tượng dữ liệu
+│   ├── Definition.java                - Định nghĩa từ
+│   ├── Request.java                   - Yêu cầu từ người dùng
+│   ├── Sentence.java                  - Câu ví dụ
+│   └── Word.java                      - Đối tượng từ
+├── factory/
+│   └── EntityFactory.java             - Factory tạo entity
+└── service/
+    ├── DictionaryService.java         - Interface dịch vụ
+    └── DictionaryServiceImpl.java      - Implementation dịch vụ
+
+================================================================================
+CHI TIẾT CÁC FILE VÀ HÀM
+================================================================================
+
+1. MAIN.JAVA
+-----------
+Mô tả: Điểm nhập chính của ứng dụng từ điển. Xử lý input từ người dùng và điều phối các lệnh.
+
+HÀM:
+- main(String[] args)
+  * Mô tả: Hàm chính khởi tạo controller và vòng lặp xử lý input
+  * Tham số: args - tham số dòng lệnh (không sử dụng)
+  * Chức năng: 
+    - Tạo DictionaryController với Scanner
+    - Vòng lặp vô hạn đọc input từ người dùng
+    - Phân tích input thành Request
+    - Gửi request cho controller xử lý
+    - Lệnh "exit" để thoát chương trình
+
+- parseRequest(String input)
+  * Mô tả: Phân tích chuỗi input thành đối tượng Request
+  * Tham số: input - chuỗi input từ người dùng
+  * Trả về: Request - đối tượng chứa action, keyword và params
+  * Chức năng:
+    - Xử lý đặc biệt cho lệnh "upload pronounce" với 4 phần
+    - Phân tích các lệnh: help, lookup, lookupshow, drop, export, define
+    - Validate số lượng tham số cho mỗi lệnh
+    - Throw IllegalArgumentException nếu input không hợp lệ
+
+================================================================================
+
+2. COMMAND/COMMAND.JAVA
+----------------------
+Mô tả: Lớp trừu tượng cơ sở cho tất cả các lệnh. Cung cấp DictionaryService cho các lệnh con.
+
+THUỘC TÍNH:
+- service: DictionaryService (protected) - Instance của DictionaryServiceImpl
+
+HÀM:
+- Command() (protected constructor)
+  * Mô tả: Constructor khởi tạo service
+  * Chức năng: Lấy instance singleton của DictionaryServiceImpl
+
+- execute(Request request) (abstract)
+  * Mô tả: Phương thức trừu tượng để các lệnh con implement
+  * Tham số: request - đối tượng Request chứa thông tin lệnh
+
+================================================================================
+
+3. COMMAND/DEFINECOMMAND.JAVA
+----------------------------
+Mô tả: Lệnh thêm/sửa từ với nhiều định nghĩa. Cho phép tương tác menu để chỉnh sửa chi tiết.
+
+THUỘC TÍNH:
+- scanner: Scanner - Đọc input từ người dùng
+
+HÀM:
+- DefineCommand(Scanner scanner)
+  * Mô tả: Constructor
+  * Tham số: scanner - Scanner để đọc input
+
+- execute(Request request)
+  * Mô tả: Thực thi lệnh define
+  * Chức năng:
+    - Lookup từ trong database
+    - Nếu từ chưa tồn tại: tạo từ mới, điền thông tin, lưu
+    - Nếu từ đã tồn tại: hiển thị, cho phép chỉnh sửa
+
+- fillNewWord(Word word)
+  * Mô tả: Điền thông tin cho từ mới
+  * Tham số: word - đối tượng Word cần điền
+  * Chức năng: Đọc phát âm (tùy chọn) và định nghĩa
+
+- editWord(Word word)
+  * Mô tả: Menu chỉnh sửa từ
+  * Chức năng:
+    - W: Chỉnh sửa từ khóa (keyword)
+    - P: Chỉnh sửa phát âm
+    - A: Thêm định nghĩa mới
+    - 1,2,3...: Chỉnh sửa định nghĩa cụ thể
+    - 0: Hủy
+
+- editKeyword(Word word)
+  * Mô tả: Chỉnh sửa từ khóa và đổi tên file
+  * Chức năng: Đổi tên từ và cập nhật quan hệ đồng nghĩa/trái nghĩa
+
+- editDefinition(Word word, int definitionIndex)
+  * Mô tả: Menu chỉnh sửa định nghĩa
+  * Chức năng:
+    - 1: Chỉnh sửa loại từ (class)
+    - 2: Chỉnh sửa nghĩa
+    - 3: Chỉnh sửa ví dụ
+    - 4: Chỉnh sửa nghĩa ví dụ
+    - 5: Chỉnh sửa tất cả
+    - 6: Xóa định nghĩa
+    - 0: Hủy
+
+- readDefinition()
+  * Mô tả: Đọc thông tin định nghĩa từ người dùng
+  * Trả về: Definition - đối tượng định nghĩa mới
+
+- replaceDefinitionFields(Definition definition)
+  * Mô tả: Thay thế tất cả trường của định nghĩa
+
+- sentence(Definition definition)
+  * Mô tả: Lấy hoặc tạo câu ví dụ cho định nghĩa
+  * Trả về: Sentence
+
+- definitionLabel(Word word, int index)
+  * Mô tả: Tạo nhãn hiển thị cho định nghĩa (ví dụ: "noun 1 - meaning")
+
+- definitionNumber(Word word, int targetIndex, String targetType)
+  * Mô tả: Tính số thứ tự định nghĩa theo loại từ
+
+- readRequired(String label)
+  * Mô tả: Đọc input bắt buộc (không được rỗng)
+
+- readOptional(String label)
+  * Mô tả: Đọc input tùy chọn (có thể rỗng)
+
+- showWord(Word word)
+  * Mô tả: Hiển thị thông tin chi tiết của từ
+
+- valueOrEmpty(String value)
+  * Mô tả: Chuyển null thành chuỗi rỗng
+
+================================================================================
+
+4. COMMAND/DROPCOMMAND.JAVA
+--------------------------
+Mô tả: Lệnh xóa từ khỏi từ điển.
+
+HÀM:
+- execute(Request request)
+  * Mô tả: Thực thi lệnh drop
+  * Chức năng: Gọi service.drop() để xóa từ và file liên quan
+
+================================================================================
+
+5. COMMAND/EXPORTCOMMAND.JAVA
+----------------------------
+Mô tả: Lệnh xuất toàn bộ từ điển ra file text.
+
+HÀM:
+- execute(Request request)
+  * Mô tả: Thực thi lệnh export
+  * Chức năng: Gọi service.export() để xuất ra dictionary.txt
+
+================================================================================
+
+6. COMMAND/HELPCOMMAND.JAVA
+---------------------------
+Mô tả: Lệnh hiển thị hướng dẫn sử dụng các lệnh.
+
+HÀM:
+- execute(Request request)
+  * Mô tả: Hiển thị tất cả lệnh và ví dụ sử dụng
+  * Chức năng: In ra hướng dẫn cho: help, lookup, lookupshow, define, upload pronounce, drop, export, exit
+
+================================================================================
+
+7. COMMAND/LOOKUPCOMMAND.JAVA
+----------------------------
+Mô tả: Lệnh tra cứu từ chính xác trong từ điển.
+
+HÀM:
+- execute(Request request)
+  * Mô tả: Thực thi lệnh lookup
+  * Chức năng:
+    - Lookup từ bằng service.lookup()
+    - Hiển thị thông tin từ: từ khóa, phát âm, đồng nghĩa, trái nghĩa, file âm thanh
+    - Hiển thị tất cả định nghĩa với loại từ, nghĩa, ví dụ
+
+- printIfNotBlank(String label, String value)
+  * Mô tả: In label:value nếu value không rỗng
+
+- printList(String label, List<String> values)
+  * Mô tả: In danh sách values cách nhau bởi dấu phẩy
+
+================================================================================
+
+8. COMMAND/LOOKUPSHOWCOMMAND.JAVA
+--------------------------------
+Mô tả: Lệnh tìm kiếm từ tương tự và hiển thị danh sách để chọn.
+
+THUỘC TÍNH:
+- scanner: Scanner - Đọc input từ người dùng
+
+HÀM:
+- LookupShowCommand(Scanner scanner)
+  * Mô tả: Constructor
+
+- execute(Request request)
+  * Mô tả: Thực thi lệnh lookupshow
+  * Chức năng:
+    - Tìm các từ tương tự bằng service.lookupSimilar()
+    - Hiển thị danh sách với tóm tắt
+    - Người dùng chọn số để xem chi tiết
+
+- printWord(Word word)
+  * Mô tả: Hiển thị chi tiết từ (tương tự LookupCommand)
+
+- summary(Word word, String search)
+  * Mô tả: Tạo tóm tắt từ cho tìm kiếm
+  * Chức năng: Tìm các định nghĩa chứa từ khóa tìm kiếm
+
+- definitionSummary(Definition definition)
+  * Mô tả: Tạo tóm tắt định nghĩa (type: meaning)
+
+- listContains(List<String> values, String search)
+  * Mô tả: Kiểm tra danh sách có chứa chuỗi search
+
+- contains(String value, String search)
+  * Mô tả: Kiểm tra value có chứa search (case-insensitive)
+
+- printIfNotBlank(String label, String value)
+  * Mô tả: In nếu value không rỗng
+
+- printList(String label, List<String> values)
+  * Mô tả: In danh sách
+
+- valueOrEmpty(String value)
+  * Mô tả: Chuyển null thành chuỗi rỗng
+
+================================================================================
+
+9. COMMAND/UPLOADPRONOUNCECOMMAND.JAVA
+-------------------------------------
+Mô tả: Lệnh tải file âm thanh phát âm cho từ.
+
+HÀM:
+- execute(Request request)
+  * Mô tả: Thực thi lệnh upload pronounce
+  * Chức năng:
+    - Validate tham số
+    - Gọi service.uploadPronounce() để copy file và cập nhật đường dẫn
+
+================================================================================
+
+10. CONTROLLER/DICTIONARYCONTROLLER.JAVA
+----------------------------------------
+Mô tả: Điều phối các lệnh từ người dùng. Map action string với Command object.
+
+THUỘC TÍNH:
+- commands: Map<String, Command> - Map chứa các lệnh
+
+HÀM:
+- DictionaryController(Scanner scanner)
+  * Mô tả: Constructor khởi tạo map lệnh
+  * Chức năng: Đăng ký các lệnh: lookup, define, drop, export, help, upload pronounce, lookupshow
+
+- handle(Request request)
+  * Mô tả: Xử lý request bằng cách gọi lệnh tương ứng
+  * Chức năng: Lấy command từ map và execute
+
+================================================================================
+
+11. ENTITIES/DEFINITION.JAVA
+----------------------------
+Mô tả: Định nghĩa của từ (loại từ, nghĩa, ví dụ).
+
+THUỘC TÍNH:
+- type: String - Loại từ (noun, verb, adjective...)
+- meaning: String - Nghĩa của từ
+- sentence: Sentence - Câu ví dụ
+
+HÀM:
+- Definition(String type, String meaning, Sentence sentence)
+  * Mô tả: Constructor
+
+- getType(), setType(String type)
+  * Mô tả: Getter/setter cho loại từ
+
+- getMeaning(), setMeaning(String meaning)
+  * Mô tả: Getter/setter cho nghĩa
+
+- getSentence(), setSentence(Sentence sentence)
+  * Mô tả: Getter/setter cho câu ví dụ
+
+================================================================================
+
+12. ENTITIES/REQUEST.JAVA
+-------------------------
+Mô tả: Đối tượng chứa thông tin yêu cầu từ người dùng.
+
+THUỘC TÍNH:
+- action: String - Tên lệnh (lookup, define, drop...)
+- keyword: String - Từ khóa cần xử lý
+- params: List<String> - Các tham số bổ sung
+
+HÀM:
+- Request(String action, String keyword, List<String> params)
+  * Mô tả: Constructor
+
+- getAction()
+  * Mô tả: Getter cho action
+
+- getKeyword()
+  * Mô tả: Getter cho keyword
+
+- getParams()
+  * Mô tả: Getter cho params
+
+================================================================================
+
+13. ENTITIES/SENTENCE.JAVA
+--------------------------
+Mô tả: Câu ví dụ và nghĩa của câu.
+
+THUỘC TÍNH:
+- content: String - Nội dung câu ví dụ
+- meaning: String - Nghĩa của câu
+
+HÀM:
+- Sentence(String content, String meaning)
+  * Mô tả: Constructor
+
+- getContent(), setContent(String content)
+  * Mô tả: Getter/setter cho nội dung
+
+- getMeaning(), setMeaning(String meaning)
+  * Mô tả: Getter/setter cho nghĩa
+
+================================================================================
+
+14. ENTITIES/WORD.JAVA
+----------------------
+Mô tả: Đối tượng từ trong từ điển với định nghĩa, phát âm, từ đồng nghĩa/trái nghĩa.
+
+THUỘC TÍNH:
+- keyword: String - Từ khóa
+- pronunciation: String - Phiên âm
+- pronounceAudioPath: String - Đường dẫn file âm thanh
+- definitions: LinkedList<Definition> - Danh sách định nghĩa
+- synonyms: LinkedList<String> - Danh sách từ đồng nghĩa
+- antonyms: LinkedList<String> - Danh sách từ trái nghĩa
+
+HÀM:
+- Word(String keyword)
+  * Mô tả: Constructor, khởi tạo các danh sách rỗng
+
+- addDefinition(Definition definition)
+  * Mô tả: Thêm định nghĩa vào danh sách
+
+- addSynonym(String synonym)
+  * Mô tả: Thêm từ đồng nghĩa
+
+- addAntonym(String antonym)
+  * Mô tả: Thêm từ trái nghĩa
+
+- getKeyword(), setKeyword(String keyword)
+  * Mô tả: Getter/setter cho từ khóa
+
+- getDefinitions()
+  * Mô tả: Getter cho danh sách định nghĩa
+
+- getSynonyms(), setSynonyms(LinkedList<String> synonyms)
+  * Mô tả: Getter/setter cho danh sách đồng nghĩa
+
+- getAntonyms(), setAntonyms(LinkedList<String> antonyms)
+  * Mô tả: Getter/setter cho danh sách trái nghĩa
+
+- getPronunciation(), setPronunciation(String pronunciation)
+  * Mô tả: Getter/setter cho phiên âm
+
+- getPronounceAudioPath(), setPronounceAudioPath(String pronounceAudioPath)
+  * Mô tả: Getter/setter cho đường dẫn file âm thanh
+
+================================================================================
+
+15. FACTORY/ENTITYFACTORY.JAVA
+------------------------------
+Mô tả: Factory pattern để tạo các entity.
+
+HÀM:
+- createWord(String keyword)
+  * Mô tả: Tạo đối tượng Word mới
+  * Trả về: Word
+
+- createDefinition(String type, String meaning, Sentence sentence)
+  * Mô tả: Tạo đối tượng Definition mới
+  * Trả về: Definition
+
+- createSentence(String content, String meaning)
+  * Mô tả: Tạo đối tượng Sentence mới
+  * Trả về: Sentence
+
+================================================================================
+
+16. SERVICE/DICTIONARYSERVICE.JAVA
+----------------------------------
+Mô tả: Interface định nghĩa các thao tác với từ điển.
+
+HÀM:
+- lookup(String keyword)
+  * Mô tả: Tra cứu từ chính xác
+  * Trả về: Word hoặc null nếu không tìm thấy
+
+- lookupSimilar(String keyword)
+  * Mô tả: Tìm các từ tương tự
+  * Trả về: List<Word>
+
+- define(Request request)
+  * Mô tả: Định nghĩa từ mới
+
+- save(Word word)
+  * Mô tả: Lưu từ vào database
+
+- rename(String oldKeyword, String newKeyword)
+  * Mô tả: Đổi tên từ
+
+- drop(String keyword)
+  * Mô tả: Xóa từ
+
+- export()
+  * Mô tả: Xuất từ điển ra file mặc định
+
+- uploadPronounce(String keyword, String sourcePath)
+  * Mô tả: Tải file phát âm cho từ
+
+- export(String path)
+  * Mô tả: Xuất từ điển ra file chỉ định
+
+================================================================================
+
+17. SERVICE/DICTIONARYSERVICEIMPL.JAVA
+---------------------------------------
+Mô tả: Implementation của DictionaryService với Singleton pattern. Quản lý lưu trữ từ điển bằng file system (database/).
+
+CONSTANTS:
+- DATABASE_DIR: "database" - Thư mục lưu dữ liệu
+- EXPORT_FILE: "dictionary.txt" - File xuất mặc định
+- SYNONYMS_FILE: "synonyms.def" - File quan hệ đồng nghĩa
+- ANTONYMS_FILE: "antonyms.def" - File quan hệ trái nghĩa
+
+HÀM PUBLIC:
+- getInstance()
+  * Mô tả: Lấy instance singleton
+  * Trả về: DictionaryServiceImpl
+
+- lookup(String keyword)
+  * Mô tả: Tra cứu từ chính xác
+  * Chức năng: Đọc file từ database/, parse properties, tạo Word object
+
+- lookupSimilar(String keyword)
+  * Mô tả: Tìm các từ tương tự
+  * Chức năng: Duyệt tất cả file trong database/, filter theo keyword
+
+- define(Request request)
+  * Mô tả: Định nghĩa từ mới
+  * Chức năng: Lookup từ, nếu không có thì tạo mới và lưu
+
+- save(Word word)
+  * Mô tả: Lưu từ vào database
+  * Chức năng: Serialize Word sang Properties, lưu vào file .def
+
+- rename(String oldKeyword, String newKeyword)
+  * Mô tả: Đổi tên từ
+  * Chức năng: Đổi tên file, cập nhật quan hệ đồng nghĩa/trái nghĩa
+
+- drop(String keyword)
+  * Mô tả: Xóa từ
+  * Chức năng: Xóa file, xóa quan hệ, xóa file âm thanh
+
+- export()
+  * Mô tả: Xuất ra文件 mặc định
+
+- export(String path)
+  * Mô tả: Xuất từ điển ra file text
+  * Chức năng: Đọc tất cả từ, format và ghi ra file
+
+- uploadPronounce(String keyword, String sourcePath)
+  * Mô tả: Tải file phát âm
+  * Chức năng: Copy file vào database/, cập nhật đường dẫn trong Word
+
+HÀM PRIVATE:
+- allWords()
+  * Mô tả: Lấy tất cả từ từ database
+
+- readWord(Path path)
+  * Mô tả: Đọc từ từ file
+
+- readWord(Path path, Properties synonyms, Properties antonyms)
+  * Mô tả: Đọc từ với quan hệ đồng nghĩa/trái nghĩa
+
+- writeWord(PrintWriter writer, Word word)
+  * Mô tả: Ghi từ ra file text
+
+- readDefinitions(Properties properties, Word word)
+  * Mô tả: Đọc danh sách định nghĩa từ properties
+
+- addDefinition(Word word, String type, String meaning, String example, String exampleMeaning)
+  * Mô tả: Thêm định nghĩa nếu có dữ liệu
+
+- loadRelationProperties(String fileName)
+  * Mô tả: Đọc file quan hệ (synonyms/antonyms)
+
+- readRelation(Properties properties, String keyword)
+  * Mô tả: Đọc danh sách quan hệ của từ
+
+- migrateRelationKeyword(String fileName, String oldKeyword, String newKeyword)
+  * Mô tả: Cập nhật quan hệ khi đổi tên từ
+
+- removeRelationKeyword(String fileName, String keyword)
+  * Mô tả: Xóa quan hệ của từ
+
+- replaceRelationValue(Properties properties, String oldKeyword, String newKeyword)
+  * Mô tả: Thay thế từ trong quan hệ
+
+- removeRelationValue(Properties properties, String keyword)
+  * Mô tả: Xóa từ trong quan hệ
+
+- parseValues(String raw)
+  * Mô tả: Parse chuỗi values thành Set
+
+- joinValues(Set<String> values)
+  * Mô tả: Join values thành chuỗi
+
+- storeRelationProperties(String fileName, Properties properties)
+  * Mô tả: Lưu file quan hệ
+
+- writeList(PrintWriter writer, String label, List<String> values)
+  * Mô tả: Ghi danh sách ra file
+
+- wordMatches(Word word, String search)
+  * Mô tả: Kiểm tra từ có khớp tìm kiếm
+
+- listContains(List<String> values, String search)
+  * Mô tả: Kiểm tra danh sách có chứa chuỗi
+
+- isWordFile(Path path)
+  * Mô tả: Kiểm tra path có phải file từ (.def, không phải synonyms/antonyms)
+
+- parseInt(String value, int defaultValue)
+  * Mô tả: Parse integer với giá trị mặc định
+
+- renamePronounceAudio(Word word, String newKeyword)
+  * Mô tả: Đổi tên file âm thanh khi đổi từ
+
+- deletePronounceAudio(Word word)
+  * Mô tả: Xóa file âm thanh
+
+- samePath(Path first, Path second)
+  * Mô tả: So sánh 2 path
+
+- isInsideDatabase(Path path)
+  * Mô tả: Kiểm tra path có trong thư mục database
+
+- resolvePath(String path)
+  * Mô tả: Resolve path thành absolute path
+
+- sameKeyword(String first, String second)
+  * Mô tả: So sánh 2 từ khóa (case-insensitive)
+
+- wordFile(String keyword)
+  * Mô tả: Lấy path file từ từ khóa
+
+- sanitizeFileName(String value)
+  * Mô tả: Chuyển từ khóa thành tên file hợp lệ
+  * Chức năng: 
+    - Chuyển thành lowercase
+    - Nếu chỉ chứa a-z0-9_- thì giữ nguyên
+    - Ngược lại encode bằng Base64 với prefix "u_"
+
+- getExtension(String fileName)
+  * Mô tả: Lấy phần mở rộng file
+
+- contains(String value, String search)
+  * Mô tả: Kiểm tra value có chứa search (case-insensitive)
+
+- valueOrEmpty(String value)
+  * Mô tả: Chuyển null thành chuỗi rỗng
+
+- isBlank(String value)
+  * Mô tả: Kiểm tra chuỗi rỗng hoặc null
+
+- ensureDatabaseDir()
+  * Mô tả: Đảm bảo thư mục database và file quan hệ tồn tại
+
+- createFileIfMissing(Path path)
+  * Mô tả: Tạo file nếu chưa tồn tại
+
+================================================================================
+CẤU TRÚC DATABASE
+================================================================================
+
+Thư mục database/ chứa:
+- *.def files: Mỗi file là một từ với format Properties
+- synonyms.def: File quan hệ đồng nghĩa (format: word=value1,value2)
+- antonyms.def: File quan hệ trái nghĩa (format: word=value1,value2)
+- Audio files: File âm thanh phát âm (được đặt tên theo từ)
+
+Format file .def (Properties):
+- word: từ khóa
+- pronounce: phiên âm
+- pronounceAudio: đường dẫn file âm thanh
+- definition.count: số lượng định nghĩa
+- definition.0.type: loại từ định nghĩa 0
+- definition.0.meaning: nghĩa định nghĩa 0
+- definition.0.example: ví dụ định nghĩa 0
+- definition.0.exampleMeaning: nghĩa ví dụ định nghĩa 0
+- (lặp cho các định nghĩa tiếp theo)
+
+================================================================================
+PATTERN SỬ DỤNG
+================================================================================
+
+1. Singleton Pattern: DictionaryServiceImpl
+2. Command Pattern: Tất cả các lệnh extends Command
+3. Factory Pattern: EntityFactory tạo entity
+4. Controller Pattern: DictionaryController điều phối lệnh
+
+================================================================================
+LƯU Ý
+================================================================================
+
+- 3 file entities (Definition.java, Sentence.java, Word.java) chưa có chú thích đầu file do hạn chế kỹ thuật. 
+  Bạn cần thêm thủ công các dòng sau vào đầu mỗi file:
+
+Definition.java (sau dòng "package entities;"):
+/**
+ * Definition - Định nghĩa của từ (loại từ, nghĩa, ví dụ)
+ */
+
+Sentence.java (sau dòng "package entities;"):
+/**
+ * Sentence - Câu ví dụ và nghĩa của câu
+ */
+
+Word.java (sau dòng "import java.util.LinkedList;"):
+/**
+ * Word - Đối tượng từ trong từ điển với định nghĩa, phát âm, từ đồng nghĩa/trái nghĩa
+ */
