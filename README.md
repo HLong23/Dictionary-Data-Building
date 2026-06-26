@@ -5,7 +5,7 @@
 ## Tính năng
 
 - `lookup <word>` - Tra cứu từ
-- `lookupshow <word>` - Tra cứu và hiển thị chi tiết
+- `lookupshow <word>` - Tra cứu từ gần giống
 - `define <word>` - Định nghĩa từ
 - `drop <word>` - Xóa từ
 - `export` - Xuất dữ liệu từ điển
