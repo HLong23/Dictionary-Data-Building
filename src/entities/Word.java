@@ -42,6 +42,12 @@ public class Word {
     }
 
     public LinkedList<Definition> getDefinitions() {
+        // Sort definitions alphabetically by type
+        definitions.sort((d1, d2) -> {
+            String type1 = d1.getType() == null ? "" : d1.getType().toLowerCase();
+            String type2 = d2.getType() == null ? "" : d2.getType().toLowerCase();
+            return type1.compareTo(type2);
+        });
         return definitions;
     }
 

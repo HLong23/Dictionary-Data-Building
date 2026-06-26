@@ -24,36 +24,57 @@ public class LookupCommand extends Command {
         Word word = service.lookup(request.getKeyword());
 
         if (word == null) {
-            System.out.println("Word not found: " + request.getKeyword());
+            System.out.println("Không tìm thấy từ: " + request.getKeyword());
             return;
         }
 
-        System.out.println("Word: " + word.getKeyword());
+        System.out.println("Từ: " + word.getKeyword());
 
-        printIfNotBlank("Pronounce", word.getPronunciation());
-        printRelationMap("Synonyms", word.getSynonyms());
-        printRelationMap("Antonyms", word.getAntonyms());
+        printIfNotBlank("Phiên âm", word.getPronunciation());
+        printRelationMap("Từ đồng nghĩa", word.getSynonyms());
+        printRelationMap("Từ trái nghĩa", word.getAntonyms());
 
-        for (int i = 0; i < word.getDefinitions().size(); i++) {
-            Definition definition = word.getDefinitions().get(i);
-            Sentence sentence = definition.getSentence();
+        // Group definitions by type
+        java.util.Map<String, java.util.List<Definition>> groupedDefinitions = new java.util.LinkedHashMap<>();
+        for (Definition definition : word.getDefinitions()) {
+            String type = definition.getType();
+            if (type == null || type.isBlank()) {
+                type = "Khác";
+            }
+            groupedDefinitions.computeIfAbsent(type, k -> new java.util.ArrayList<>()).add(definition);
+        }
+
+        // Display grouped by type
+        int defCount = 1;
+        for (java.util.Map.Entry<String, java.util.List<Definition>> entry : groupedDefinitions.entrySet()) {
+            String type = entry.getKey();
+            java.util.List<Definition> definitions = entry.getValue();
 
             System.out.println("----------------------------");
-            System.out.println("Definition " + (i + 1) + ":");
-            printIfNotBlank("Class", definition.getType());
-            printIfNotBlank("Meaning", definition.getMeaning());
+            System.out.println("Loại từ: " + type);
 
-            if (sentence != null) {
-                printIfNotBlank("Example", sentence.getContent());
-                printIfNotBlank("Example's meaning", sentence.getMeaning());
+            for (Definition definition : definitions) {
+                java.util.LinkedList<Sentence> examples = definition.getExamples();
+
+                System.out.println("  Định nghĩa " + defCount + ":");
+                printIfNotBlank("    Nghĩa", definition.getMeaning());
+
+                if (examples != null && !examples.isEmpty()) {
+                    for (int j = 0; j < examples.size(); j++) {
+                        Sentence sentence = examples.get(j);
+                        printIfNotBlank("    Ví dụ " + (j + 1), sentence.getContent());
+                        printIfNotBlank("      Nghĩa ví dụ", sentence.getMeaning());
+                    }
+                }
+                defCount++;
             }
         }
 
         if (scanner != null) {
             String audioPath = "database/" + word.getKeyword() + ".mp3";
-            System.out.print("\nPress 1 to pronounce or any other key to exit: ");
+            System.out.print("\nNhấn 1 để phát âm hoặc phím bất kỳ để thoát: ");
             String choice = scanner.nextLine().trim();
-            
+
             if (choice.equals("1")) {
                 playAudioLoop(audioPath);
             }
@@ -63,13 +84,13 @@ public class LookupCommand extends Command {
     private void playAudioLoop(String audioPath) {
         File audioFile = new File(audioPath);
         if (!audioFile.exists()) {
-            System.out.println("Not find file pronunciation: " + audioPath);
+            System.out.println("Không tìm thấy file phát âm: " + audioPath);
             return;
         }
 
         while (true) {
             playAudio(audioPath);
-            System.out.print("\nPress 1 to play again or any other key to exit: ");
+            System.out.print("\nNhấn 1 để phát lại hoặc phím bất kỳ để thoát: ");
             String choice = scanner.nextLine().trim();
 
             if (!choice.equals("1")) {
@@ -83,24 +104,24 @@ public class LookupCommand extends Command {
             // Tạo file VBS tạm để phát âm thanh ngầm
             File vbsFile = File.createTempFile("play_audio", ".vbs");
             vbsFile.deleteOnExit();
-            
+
             String vbsContent = "Set Sound = CreateObject(\"WMPlayer.OCX.7\")\n" +
                                "Sound.URL = \"" + new File(audioPath).getAbsolutePath() + "\"\n" +
                                "Sound.Controls.play\n" +
                                "Do While Sound.playState <> 1\n" +
                                "  WScript.Sleep 100\n" +
                                "Loop";
-            
+
             java.nio.file.Files.write(vbsFile.toPath(), vbsContent.getBytes());
-            
+
             // Chạy file VBS
             Process process = Runtime.getRuntime().exec("wscript \"" + vbsFile.getAbsolutePath() + "\"");
             process.waitFor();
-            
-            System.out.println("Completed.");
-            
+
+            System.out.println("Hoàn thành.");
+
         } catch (Exception e) {
-            System.out.println("Error: " + e.getMessage());
+            System.out.println("Lỗi: " + e.getMessage());
         }
     }
 

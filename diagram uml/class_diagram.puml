@@ -1,0 +1,192 @@
+@startuml Dictionary_Class_Diagram_Detailed
+!theme plain
+title Class Diagram - Dictionary Application (Detailed)
+
+package "entities" {
+    class Request {
+        - action: String
+        - keyword: String
+        - params: List<String>
+        --
+        + Request(String, String, List)
+        + getAction(): String
+        + getKeyword(): String
+        + getParams(): List<String>
+    }
+
+    class Word {
+        - keyword: String
+        - pronunciation: String
+        - definitions: LinkedList<Definition>
+        - synonyms: Map<String, LinkedList>
+        - antonyms: Map<String, LinkedList>
+        --
+        + Word(keyword: String)
+        + addDefinition(Definition)
+        + addSynonym(String, String)
+        + addAntonym(String, String)
+        + getKeyword(): String
+        + setKeyword(String)
+        + getDefinitions(): LinkedList
+        + getPronunciation(): String
+        + setPronunciation(String)
+        + getSynonyms(): Map
+        + getAntonyms(): Map
+    }
+
+    class Definition {
+        - type: String
+        - meaning: String
+        - examples: LinkedList<Sentence>
+        --
+        + Definition(String, String, LinkedList)
+        + Definition(String, String, Sentence)
+        + getType(): String
+        + getMeaning(): String
+        + getExamples(): LinkedList
+        + addExample(Sentence)
+        + setMeaning(String)
+    }
+
+    class Sentence {
+        - content: String
+        - meaning: String
+        --
+        + Sentence(String, String)
+        + getContent(): String
+        + getMeaning(): String
+        + setContent(String)
+        + setMeaning(String)
+    }
+}
+
+Word *-- Definition : "contains many"
+Definition *-- Sentence : "has many"
+
+package "service" {
+    interface DictionaryService {
+        + lookup(keyword: String): Word
+        + lookupSimilar(keyword: String): List<Word>
+        + save(word: Word): void
+        + drop(keyword: String): void
+        + export(): void
+        + addSynonym(keyword: String, type: String, synonym: String): void
+        + removeSynonym(keyword: String, type: String): void
+        + addAntonym(keyword: String, word: String, type: String): void
+        + removeAntonym(keyword: String, type: String): void
+    }
+
+    class DictionaryServiceImpl {
+        - {static} DATABASE_DIR: String
+        - {static} EXPORT_FILE: String
+        - {static} instance: DictionaryServiceImpl
+        --
+        - DictionaryServiceImpl()
+        + {static} getInstance(): DictionaryServiceImpl
+        + lookup(keyword: String): Word
+        + lookupSimilar(keyword: String): List<Word>
+        + save(word: Word): void
+        + rename(oldKeyword: String, newKeyword: String): void
+        + drop(keyword: String): void
+        + export(): void
+        + export(path: String): void
+        + addSynonym(keyword: String, type: String, synonym: String): void
+        + removeSynonym(keyword: String, type: String): void
+        + addAntonym(keyword: String, word: String, type: String): void
+        + removeAntonym(keyword: String, type: String): void
+        - readWord(Path): Word
+        - readSynonyms(Word): Map
+        - wordFile(keyword: String): Path
+        - sanitizeFileName(String): String
+    }
+}
+
+DictionaryService <|.. DictionaryServiceImpl : "implements"
+
+package "command" {
+    abstract class Command {
+        # service: DictionaryService
+        # scanner: Scanner
+        --
+        # Command()
+        # Command(Scanner)
+        + {abstract} execute(Request): void
+    }
+
+    class LookupCommand {
+        + LookupCommand()
+        + LookupCommand(Scanner)
+        + execute(Request): void
+        - playAudioLoop(String): void
+        - playAudio(String): void
+        - printIfNotBlank(String, String): void
+        - printRelationMap(String, Map): void
+    }
+
+    class LookupShowCommand {
+        + LookupShowCommand(Scanner)
+        + execute(Request): void
+        - summary(Word, String): String
+    }
+
+    class DefineCommand {
+        - scanner: Scanner
+        --
+        + DefineCommand(Scanner)
+        + execute(Request): void
+        - fillNewWord(Word): void
+        - editWord(Word): void
+        - readDefinition(): Definition
+        - readOptional(String): String
+    }
+
+    class DropCommand {
+        + execute(Request): void
+    }
+
+    class ExportCommand {
+        + execute(Request): void
+    }
+
+    class HelpCommand {
+        + execute(Request): void
+    }
+}
+
+Command <|-- LookupCommand : "extends"
+Command <|-- LookupShowCommand : "extends"
+Command <|-- DefineCommand : "extends"
+Command <|-- DropCommand : "extends"
+Command <|-- ExportCommand : "extends"
+Command <|-- HelpCommand : "extends"
+
+Command --> DictionaryService : "uses"
+LookupCommand --> Word : "displays"
+LookupCommand --> Definition : "uses"
+DefineCommand --> Word : "manages"
+
+package "controller" {
+    class DictionaryController {
+        - commands: Map<String, Command>
+        --
+        + DictionaryController(Scanner)
+        + handle(Request): void
+    }
+}
+
+DictionaryController --> Command : "manages"
+DictionaryController --> Request : "processes"
+
+package "main" {
+    class Main {
+        - {static} scanner: Scanner
+        --
+        + {static} main(String[]): void
+        - {static} parseRequest(String): Request
+    }
+}
+
+Main --> DictionaryController : "creates"
+Main --> Request : "creates"
+
+@enduml

@@ -10,6 +10,6 @@ public class DropCommand extends Command {
     @Override
     public void execute(Request request) {
         service.drop(request.getKeyword());
-        System.out.println("Dropped: " + request.getKeyword());
+        System.out.println("Đã xóa: " + request.getKeyword());
     }
 }

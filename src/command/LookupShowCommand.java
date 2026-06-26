@@ -27,7 +27,7 @@ public class LookupShowCommand extends Command {
         String search = request.getKeyword().toLowerCase(Locale.ROOT);
 
         if (words.isEmpty()) {
-            System.out.println("No matching words: " + request.getKeyword());
+            System.out.println("Không tìm thấy từ phù hợp: " + request.getKeyword());
             return;
         }
 
@@ -36,28 +36,30 @@ public class LookupShowCommand extends Command {
             System.out.println((i + 1) + ". " + word.getKeyword() + " - " + summary(word, search));
         }
 
-        System.out.print("Choose word number (0 to cancel): ");
+        System.out.print("Chọn số thứ tự từ (0 để hủy): ");
         String input = scanner.nextLine().trim();
 
         int choice;
         try {
             choice = Integer.parseInt(input);
         } catch (NumberFormatException e) {
-            System.out.println("Invalid choice.");
+            System.out.println("Lựa chọn không hợp lệ.");
             return;
         }
 
         if (choice == 0) {
-            System.out.println("Cancelled.");
+            System.out.println("Đã hủy.");
             return;
         }
 
         if (choice < 1 || choice > words.size()) {
-            System.out.println("Invalid choice.");
+            System.out.println("Lựa chọn không hợp lệ.");
             return;
         }
 
-        printWord(words.get(choice - 1));
+        // Call lookup command directly for the selected word
+        LookupCommand lookupCommand = new LookupCommand(scanner);
+        lookupCommand.execute(new Request("lookup", words.get(choice - 1).getKeyword(), new ArrayList<>()));
     }
 
     private void printWord(Word word) {
@@ -105,15 +107,15 @@ public class LookupShowCommand extends Command {
             return String.join("; ", parts);
         }
 
-        if (listContains(word.getSynonyms(), search)) {
-            return "Synonyms: " + String.join(", ", word.getSynonyms());
+        if (mapContains(word.getSynonyms(), search)) {
+            return "Synonyms: " + flattenMapValues(word.getSynonyms());
         }
 
-        if (listContains(word.getAntonyms(), search)) {
-            return "Antonyms: " + String.join(", ", word.getAntonyms());
+        if (mapContains(word.getAntonyms(), search)) {
+            return "Antonyms: " + flattenMapValues(word.getAntonyms());
         }
 
-        return definitionSummary(word.getDefinitions().getFirst());
+        return definitionSummary(word.getDefinitions().get(0));
     }
 
     private String definitionSummary(Definition definition) {
@@ -143,6 +145,33 @@ public class LookupShowCommand extends Command {
         }
 
         return false;
+    }
+
+    private boolean mapContains(java.util.Map<String, java.util.LinkedList<String>> map, String search) {
+        if (map == null) {
+            return false;
+        }
+
+        for (java.util.LinkedList<String> values : map.values()) {
+            if (listContains(values, search)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private String flattenMapValues(java.util.Map<String, java.util.LinkedList<String>> map) {
+        if (map == null || map.isEmpty()) {
+            return "";
+        }
+
+        java.util.List<String> allValues = new java.util.ArrayList<>();
+        for (java.util.LinkedList<String> values : map.values()) {
+            allValues.addAll(values);
+        }
+
+        return String.join(", ", allValues);
     }
 
     private boolean contains(String value, String search) {

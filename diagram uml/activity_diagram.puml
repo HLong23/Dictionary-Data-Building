@@ -1,0 +1,67 @@
+@startuml Dictionary_Activity_Diagram
+!theme plain
+title Activity Diagram - Dictionary Application
+
+start
+
+:Initialize App;
+
+repeat
+    :Display "Hành động: ";
+    :Read Input;
+
+    if (Empty?) then (yes)
+        stop
+    endif
+
+    if (exit?) then (yes)
+        :Goodbye;
+        end
+    endif
+
+    :Parse Request;
+
+    switch (Action)
+        case (lookup)
+            :Search Word;
+            if (Found?) then (yes)
+                :Display Word Info;
+                :Display Definition;
+                :Play Audio (optional);
+            else (no)
+                :Not Found;
+            endif
+
+        case (lookupshow)
+            :Search Similar;
+            if (Found?) then (yes)
+                :Show List;
+                :Select Word;
+                :Display Info;
+            else (no)
+                :Not Found;
+            endif
+
+        case (define)
+            :Check if Exists;
+            if (yes) then
+                :Edit Word;
+            else (no)
+                :Add New Word;
+            endif
+            :Save;
+
+        case (drop)
+            :Delete Word;
+
+        case (export)
+            :Export to File;
+
+        case (help)
+            :Show Help;
+    endswitch
+
+repeat while (Running?)
+
+stop
+@enduml

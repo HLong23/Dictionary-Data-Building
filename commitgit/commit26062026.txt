@@ -1,0 +1,21 @@
+Commands
+- lookupshow: sau khi chọn từ → delegate sang lookup
+- Bỏ UploadPronounceCommand
+- Sau khi sửa 1 mục trong define → quay lại menu thay vì thoát
+
+Definition
+- 1 nghĩa hỗ trợ nhiều ví dụ (examples)
+- Hiển thị nhóm theo loại từ (alphabet), không lẫn lộn noun1/verb1/noun2
+- Hiển thị: loại từ → các nghĩa của loại từ đó → loại từ tiếp theo → ...
+
+Synonyms/Antonyms
+- Tách file synonyms → synonymsNoun.def, synonymsVerb.def, synonymsAdj.def, synonymsAdv.def
+- Chỉ 4 loại từ có synonyms: verb, noun, adj, adv
+- Thêm synonyms trong define: chỉ cần nhập 1 từ → hệ thống tự tìm nhóm phù hợp
+- Sửa synonyms: để trống → xóa từ khỏi nhóm trong file tương ứng
+- Antonyms lưu riêng trong file của từng từ, bỏ antonyms.def
+- define check loại từ hiện có trước khi hiện lựa chọn synonym/antonym
+
+UI: Toàn bộ output chuyển sang tiếng Việt
+
+Diagram: Cập nhật activity diagram, class diagram

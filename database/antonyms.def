@@ -1,5 +1,0 @@
-# Shared antonym data.
-# Format: <word type><number>=antonym1=antonym2=antonym3
-ant1 = structure = layout = arrangement = configuration
-ant2 = design = pattern = blueprint = model
-ant3 = apple = fruit = ico = aa

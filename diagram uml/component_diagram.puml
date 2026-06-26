@@ -171,10 +171,10 @@ note right of ServiceImpl
   Duy trì trạng thái từ điển trong runtime.
 
   **Nghiệp vụ xử lý:**
-  • lookup / lookupshow → tìm kiếm từ
-  • define → thêm / cập nhật từ
-  • drop → xóa từ
-  • export → xuất toàn bộ dữ liệu
+  • lookup / lookupshow: tìm kiếm từ
+  • define: thêm / cập nhật từ
+  • drop: xóa từ
+  • export: xuất toàn bộ dữ liệu
 end note
 
 '============================

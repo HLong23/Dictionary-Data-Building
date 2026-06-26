@@ -32,7 +32,8 @@ public class DictionaryController {
     public void handle(Request request) {
         Command command = commands.get(request.getAction());
 
-        if(command != null) {command.execute(request);
+        if (command != null) {
+            command.execute(request);
         }
     }
 }

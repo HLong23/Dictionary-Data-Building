@@ -10,6 +10,6 @@ public class ExportCommand extends Command {
     @Override
     public void execute(Request request) {
         service.export();
-        System.out.println("Exported to: dictionary.txt");
+        System.out.println("Đã xuất ra: dictionary.txt");
     }
 }

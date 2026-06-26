@@ -18,7 +18,7 @@ public class Main {
 
         while (true) {
 
-            System.out.print("Action: ");
+            System.out.print("Hành động: ");
 
             String input = scanner.nextLine().trim();
 
@@ -27,7 +27,7 @@ public class Main {
             }
 
             if (input.equalsIgnoreCase("exit")) {
-                System.out.println("Bye!");
+                System.out.println("Tạm biệt!");
                 break;
             }
 
@@ -35,7 +35,7 @@ public class Main {
                 Request request = parseRequest(input);
                 controller.handle(request);
             } catch (Exception e) {
-                System.out.println("Invalid command!");
+                System.out.println("Lệnh không hợp lệ!");
                 System.out.println(e.getMessage());
             }
 

@@ -35,8 +35,10 @@ public class DictionaryServiceImpl implements DictionaryService {
 
     private static final String DATABASE_DIR = "database";
     private static final String EXPORT_FILE = "dictionary.txt";
-    private static final String SYNONYMS_FILE = "synonyms.def";
-    private static final String ANTONYMS_FILE = "antonyms.def";
+    private static final String SYNONYMS_NOUN_FILE = "synonymsNoun.def";
+    private static final String SYNONYMS_VERB_FILE = "synonymsVerb.def";
+    private static final String SYNONYMS_ADJECTIVE_FILE = "synonymsAdjective.def";
+    private static final String SYNONYMS_ADVERB_FILE = "synonymsAdverb.def";
     private static DictionaryServiceImpl instance;
 
     private DictionaryServiceImpl() {
@@ -59,7 +61,10 @@ public class DictionaryServiceImpl implements DictionaryService {
             return null;
         }
 
-        return readWord(path, loadRelationProperties(SYNONYMS_FILE), loadRelationProperties(ANTONYMS_FILE));
+        Word word = readWord(path);
+        word.setSynonyms(readSynonyms(word));
+        word.setAntonyms(readAntonyms(keyword));
+        return word;
     }
 
     @Override
@@ -68,13 +73,16 @@ public class DictionaryServiceImpl implements DictionaryService {
 
         String search = keyword.toLowerCase(Locale.ROOT);
         List<Word> results = new ArrayList<>();
-        Properties synonyms = loadRelationProperties(SYNONYMS_FILE);
-        Properties antonyms = loadRelationProperties(ANTONYMS_FILE);
 
         try (Stream<Path> paths = Files.list(Paths.get(DATABASE_DIR))) {
             paths
                     .filter(this::isWordFile)
-                    .map(path -> readWord(path, synonyms, antonyms))
+                    .map(path -> {
+                        Word word = readWord(path);
+                        word.setSynonyms(readSynonyms(word));
+                        word.setAntonyms(readAntonyms(word.getKeyword()));
+                        return word;
+                    })
                     .filter(word -> wordMatches(word, search))
                     .sorted(Comparator.comparing(Word::getKeyword))
                     .forEach(results::add);
@@ -96,13 +104,21 @@ public class DictionaryServiceImpl implements DictionaryService {
 
         for (int i = 0; i < word.getDefinitions().size(); i++) {
             Definition definition = word.getDefinitions().get(i);
-            Sentence sentence = definition.getSentence();
+            java.util.LinkedList<Sentence> examples = definition.getExamples();
             String prefix = "definition." + i + ".";
 
             properties.setProperty(prefix + "type", valueOrEmpty(definition.getType()));
             properties.setProperty(prefix + "meaning", valueOrEmpty(definition.getMeaning()));
-            properties.setProperty(prefix + "example", sentence == null ? "" : valueOrEmpty(sentence.getContent()));
-            properties.setProperty(prefix + "exampleMeaning", sentence == null ? "" : valueOrEmpty(sentence.getMeaning()));
+            properties.setProperty(prefix + "example.count", String.valueOf(examples != null ? examples.size() : 0));
+
+            if (examples != null) {
+                for (int j = 0; j < examples.size(); j++) {
+                    Sentence sentence = examples.get(j);
+                    String examplePrefix = prefix + "example." + j + ".";
+                    properties.setProperty(examplePrefix + "content", valueOrEmpty(sentence.getContent()));
+                    properties.setProperty(examplePrefix + "meaning", valueOrEmpty(sentence.getMeaning()));
+                }
+            }
         }
 
         try (FileOutputStream output = new FileOutputStream(wordFile(word.getKeyword()).toFile())) {
@@ -110,6 +126,9 @@ public class DictionaryServiceImpl implements DictionaryService {
         } catch (IOException e) {
             throw new RuntimeException("Cannot save word: " + word.getKeyword(), e);
         }
+
+        // Save antonyms to per-word file
+        saveAntonyms(word.getKeyword(), word.getAntonyms());
     }
 
     @Override
@@ -127,9 +146,9 @@ public class DictionaryServiceImpl implements DictionaryService {
             throw new IllegalArgumentException("Word already exists: " + newKeyword);
         }
 
-        Word word = readWord(oldWordPath, loadRelationProperties(SYNONYMS_FILE), loadRelationProperties(ANTONYMS_FILE));
+        Word word = readWord(oldWordPath);
         word.setKeyword(newKeyword);
-        
+
         // Rename pronounce audio file if exists
         Path oldAudioPath = Paths.get(DATABASE_DIR, sanitizeFileName(oldKeyword) + ".mp3");
         Path newAudioPath = Paths.get(DATABASE_DIR, sanitizeFileName(newKeyword) + ".mp3");
@@ -140,7 +159,21 @@ public class DictionaryServiceImpl implements DictionaryService {
                 throw new RuntimeException("Cannot rename pronunciation audio", e);
             }
         }
-        
+
+        // Rename antonyms file if exists
+        Path oldAntonymsPath = antonymFile(oldKeyword);
+        Path newAntonymsPath = antonymFile(newKeyword);
+        if (Files.exists(oldAntonymsPath) && !samePath(oldAntonymsPath, newAntonymsPath)) {
+            try {
+                Files.move(oldAntonymsPath, newAntonymsPath, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                throw new RuntimeException("Cannot rename antonyms file", e);
+            }
+        }
+
+        // Update synonyms in type-specific files
+        updateSynonymsInFiles(word, oldKeyword, newKeyword);
+
         save(word);
 
         if (!samePath(oldWordPath, newWordPath)) {
@@ -150,17 +183,16 @@ public class DictionaryServiceImpl implements DictionaryService {
                 throw new RuntimeException("Cannot remove old word file: " + oldKeyword, e);
             }
         }
-
-        migrateRelationKeyword(SYNONYMS_FILE, oldKeyword, newKeyword);
-        migrateRelationKeyword(ANTONYMS_FILE, oldKeyword, newKeyword);
     }
 
     @Override
     public void drop(String keyword) {
         try {
             Files.deleteIfExists(wordFile(keyword));
-            removeRelationKeyword(SYNONYMS_FILE, keyword);
-            removeRelationKeyword(ANTONYMS_FILE, keyword);
+            // Remove from synonyms files
+            removeSynonymFromAllFiles(keyword);
+            // Delete antonyms file
+            Files.deleteIfExists(antonymFile(keyword));
             // Delete pronounce audio file if exists
             Path audioPath = Paths.get(DATABASE_DIR, sanitizeFileName(keyword) + ".mp3");
             Files.deleteIfExists(audioPath);
@@ -205,17 +237,176 @@ public class DictionaryServiceImpl implements DictionaryService {
         }
     }
 
+    @Override
+    public void addSynonym(String keyword, String wordType, String synonymWord) {
+        String normalizedType = normalizeWordType(wordType);
+        if (normalizedType == null) {
+            throw new IllegalArgumentException("Invalid word type for synonyms: " + wordType);
+        }
+
+        String fileName = getSynonymFileName(normalizedType);
+        if (fileName == null) {
+            throw new IllegalArgumentException("Cannot find synonym file for type: " + normalizedType);
+        }
+
+        Path filePath = Paths.get(DATABASE_DIR, fileName);
+        Properties properties = new Properties();
+
+        if (Files.exists(filePath)) {
+            try (FileInputStream input = new FileInputStream(filePath.toFile())) {
+                properties.load(input);
+            } catch (IOException e) {
+                throw new RuntimeException("Cannot read synonyms file: " + fileName, e);
+            }
+        }
+
+        // Find existing group containing the synonym word or create new group
+        String sanitizedKeyword = sanitizeFileName(keyword).toLowerCase();
+        String sanitizedSynonym = sanitizeFileName(synonymWord).toLowerCase();
+        boolean found = false;
+
+        for (String key : properties.stringPropertyNames()) {
+            String[] words = properties.getProperty(key, "").split("=");
+            Set<String> updatedWords = new LinkedHashSet<>();
+
+            for (String word : words) {
+                String cleanWord = word.trim().toLowerCase();
+                if (cleanWord.equals(sanitizedSynonym) || cleanWord.equals(sanitizedKeyword)) {
+                    updatedWords.add(sanitizedKeyword);
+                    updatedWords.add(sanitizedSynonym);
+                    found = true;
+                } else {
+                    updatedWords.add(cleanWord);
+                }
+            }
+
+            if (found) {
+                properties.setProperty(key, String.join("=", updatedWords));
+                break;
+            }
+        }
+
+        if (!found) {
+            // Create new group
+            String newKey = "group" + (properties.stringPropertyNames().size() + 1);
+            properties.setProperty(newKey, sanitizedKeyword + "=" + sanitizedSynonym);
+        }
+
+        try (FileOutputStream output = new FileOutputStream(filePath.toFile())) {
+            properties.store(output, "Synonyms " + normalizedType);
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot save synonyms file: " + fileName, e);
+        }
+    }
+
+    @Override
+    public void removeSynonym(String keyword, String wordType) {
+        String normalizedType = normalizeWordType(wordType);
+        if (normalizedType == null) {
+            throw new IllegalArgumentException("Invalid word type for synonyms: " + wordType);
+        }
+
+        String fileName = getSynonymFileName(normalizedType);
+        if (fileName == null) {
+            throw new IllegalArgumentException("Cannot find synonym file for type: " + normalizedType);
+        }
+
+        Path filePath = Paths.get(DATABASE_DIR, fileName);
+        if (!Files.exists(filePath)) {
+            return;
+        }
+
+        Properties properties = new Properties();
+        try (FileInputStream input = new FileInputStream(filePath.toFile())) {
+            properties.load(input);
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot read synonyms file: " + fileName, e);
+        }
+
+        String sanitizedKeyword = sanitizeFileName(keyword).toLowerCase();
+        boolean updated = false;
+
+        for (String key : properties.stringPropertyNames()) {
+            String[] words = properties.getProperty(key, "").split("=");
+            Set<String> updatedWords = new LinkedHashSet<>();
+
+            for (String word : words) {
+                String cleanWord = word.trim().toLowerCase();
+                if (!cleanWord.equals(sanitizedKeyword)) {
+                    updatedWords.add(cleanWord);
+                } else {
+                    updated = true;
+                }
+            }
+
+            if (updated) {
+                if (updatedWords.isEmpty()) {
+                    properties.remove(key);
+                } else {
+                    properties.setProperty(key, String.join("=", updatedWords));
+                }
+                break;
+            }
+        }
+
+        if (updated) {
+            try (FileOutputStream output = new FileOutputStream(filePath.toFile())) {
+                properties.store(output, "Synonyms " + normalizedType);
+            } catch (IOException e) {
+                throw new RuntimeException("Cannot save synonyms file: " + fileName, e);
+            }
+        }
+    }
+
+    @Override
+    public void addAntonym(String keyword, String antonymWord, String antonymType) {
+        Word word = lookup(keyword);
+        if (word == null) {
+            throw new IllegalArgumentException("Word not found: " + keyword);
+        }
+
+        Map<String, LinkedList<String>> antonyms = word.getAntonyms();
+        if (antonyms == null) {
+            antonyms = new HashMap<>();
+            word.setAntonyms(antonyms);
+        }
+
+        LinkedList<String> typeAntonyms = antonyms.computeIfAbsent(antonymType, k -> new LinkedList<>());
+        if (!typeAntonyms.contains(antonymWord)) {
+            typeAntonyms.add(antonymWord);
+        }
+
+        saveAntonyms(keyword, antonyms);
+    }
+
+    @Override
+    public void removeAntonym(String keyword, String antonymType) {
+        Word word = lookup(keyword);
+        if (word == null) {
+            throw new IllegalArgumentException("Word not found: " + keyword);
+        }
+
+        Map<String, LinkedList<String>> antonyms = word.getAntonyms();
+        if (antonyms != null) {
+            antonyms.remove(antonymType);
+            saveAntonyms(keyword, antonyms);
+        }
+    }
+
     private List<Word> allWords() {
         ensureDatabaseDir();
 
         List<Word> words = new ArrayList<>();
-        Properties synonyms = loadRelationProperties(SYNONYMS_FILE);
-        Properties antonyms = loadRelationProperties(ANTONYMS_FILE);
 
         try (Stream<Path> paths = Files.list(Paths.get(DATABASE_DIR))) {
             paths
                     .filter(this::isWordFile)
-                    .map(path -> readWord(path, synonyms, antonyms))
+                    .map(path -> {
+                        Word word = readWord(path);
+                        word.setSynonyms(readSynonyms(word));
+                        word.setAntonyms(readAntonyms(word.getKeyword()));
+                        return word;
+                    })
                     .sorted(Comparator.comparing(Word::getKeyword))
                     .forEach(words::add);
         } catch (IOException e) {
@@ -226,10 +417,6 @@ public class DictionaryServiceImpl implements DictionaryService {
     }
 
     private Word readWord(Path path) {
-        return readWord(path, loadRelationProperties(SYNONYMS_FILE), loadRelationProperties(ANTONYMS_FILE));
-    }
-
-    private Word readWord(Path path, Properties synonyms, Properties antonyms) {
         Properties properties = new Properties();
 
         try (FileInputStream input = new FileInputStream(path.toFile())) {
@@ -241,8 +428,6 @@ public class DictionaryServiceImpl implements DictionaryService {
         Word word = new Word(properties.getProperty("word", ""));
         word.setPronunciation(properties.getProperty("pronounce", ""));
         readDefinitions(properties, word);
-        word.setSynonyms(readRelation(synonyms, word.getKeyword()));
-        word.setAntonyms(readRelation(antonyms, word.getKeyword()));
 
         return word;
     }
@@ -253,21 +438,46 @@ public class DictionaryServiceImpl implements DictionaryService {
         if (!valueOrEmpty(word.getPronunciation()).isEmpty()) {
             writer.println("   🔊 " + valueOrEmpty(word.getPronunciation()));
         }
-        
-        writeList(writer, "   🔗 Synonyms", word.getSynonyms());
-        writeList(writer, "   🔀 Antonyms", word.getAntonyms());
 
-        for (int i = 0; i < word.getDefinitions().size(); i++) {
-            Definition definition = word.getDefinitions().get(i);
-            Sentence sentence = definition.getSentence();
+        writeMap(writer, "   🔗 Synonyms", word.getSynonyms());
+        writeMap(writer, "   🔀 Antonyms", word.getAntonyms());
+
+        // Group definitions by type
+        java.util.Map<String, java.util.List<Definition>> groupedDefinitions = new java.util.LinkedHashMap<>();
+        for (Definition definition : word.getDefinitions()) {
+            String type = definition.getType();
+            if (type == null || type.isBlank()) {
+                type = "Khác";
+            }
+            groupedDefinitions.computeIfAbsent(type, k -> new java.util.ArrayList<>()).add(definition);
+        }
+
+        // Display grouped by type
+        int defCount = 1;
+        for (java.util.Map.Entry<String, java.util.List<Definition>> entry : groupedDefinitions.entrySet()) {
+            String type = entry.getKey();
+            java.util.List<Definition> definitions = entry.getValue();
 
             writer.println("   ┌─────────────────────────────────────────────────────");
-            writer.println("   │ " + (i + 1) + ". " + valueOrEmpty(definition.getType()) + " - " + valueOrEmpty(definition.getMeaning()));
-            if (sentence != null && !valueOrEmpty(sentence.getContent()).isEmpty()) {
-                writer.println("   │    💬 " + valueOrEmpty(sentence.getContent()));
-                if (!valueOrEmpty(sentence.getMeaning()).isEmpty()) {
-                    writer.println("   │       " + valueOrEmpty(sentence.getMeaning()));
+            writer.println("   │ Loại từ: " + type);
+
+            for (Definition definition : definitions) {
+                java.util.LinkedList<Sentence> examples = definition.getExamples();
+
+                writer.println("   │   Định nghĩa " + defCount + ": " + valueOrEmpty(definition.getMeaning()));
+
+                if (examples != null && !examples.isEmpty()) {
+                    for (int j = 0; j < examples.size(); j++) {
+                        Sentence sentence = examples.get(j);
+                        if (!valueOrEmpty(sentence.getContent()).isEmpty()) {
+                            writer.println("   │      💬 " + valueOrEmpty(sentence.getContent()));
+                            if (!valueOrEmpty(sentence.getMeaning()).isEmpty()) {
+                                writer.println("   │         " + valueOrEmpty(sentence.getMeaning()));
+                            }
+                        }
+                    }
                 }
+                defCount++;
             }
             writer.println("   └─────────────────────────────────────────────────────");
         }
@@ -279,15 +489,24 @@ public class DictionaryServiceImpl implements DictionaryService {
 
         for (int i = 0; i < count; i++) {
             String prefix = "definition." + i + ".";
-            addDefinition(
-                    word,
-                    properties.getProperty(prefix + "type", ""),
-                    properties.getProperty(prefix + "meaning", ""),
-                    properties.getProperty(prefix + "example", ""),
-                    properties.getProperty(prefix + "exampleMeaning", "")
-            );
+            String type = properties.getProperty(prefix + "type", "");
+            String meaning = properties.getProperty(prefix + "meaning", "");
+            int exampleCount = parseInt(properties.getProperty(prefix + "example.count", "0"), 0);
+
+            java.util.LinkedList<Sentence> examples = new java.util.LinkedList<>();
+            for (int j = 0; j < exampleCount; j++) {
+                String examplePrefix = prefix + "example." + j + ".";
+                String content = properties.getProperty(examplePrefix + "content", "");
+                String exampleMeaning = properties.getProperty(examplePrefix + "meaning", "");
+                examples.add(new Sentence(content, exampleMeaning));
+            }
+
+            if (!isBlank(type) || !isBlank(meaning) || !examples.isEmpty()) {
+                word.addDefinition(new Definition(type, meaning, examples));
+            }
         }
 
+        // Backward compatibility for old format
         if (word.getDefinitions().isEmpty()) {
             addDefinition(
                     word,
@@ -464,10 +683,22 @@ public class DictionaryServiceImpl implements DictionaryService {
         }
     }
 
+    private void writeMap(PrintWriter writer, String label, Map<String, LinkedList<String>> map) {
+        if (map != null && !map.isEmpty()) {
+            for (Map.Entry<String, LinkedList<String>> entry : map.entrySet()) {
+                String wordType = entry.getKey();
+                LinkedList<String> values = entry.getValue();
+                if (!values.isEmpty()) {
+                    writer.println(label + " (" + wordType + "): " + String.join(", ", values));
+                }
+            }
+        }
+    }
+
     private boolean wordMatches(Word word, String search) {
         if (contains(word.getKeyword(), search)
-                || listContains(word.getSynonyms(), search)
-                || listContains(word.getAntonyms(), search)) {
+                || mapContains(word.getSynonyms(), search)
+                || mapContains(word.getAntonyms(), search)) {
             return true;
         }
 
@@ -499,11 +730,28 @@ public class DictionaryServiceImpl implements DictionaryService {
         return false;
     }
 
+    private boolean mapContains(Map<String, LinkedList<String>> map, String search) {
+        if (map == null) {
+            return false;
+        }
+
+        for (LinkedList<String> values : map.values()) {
+            if (listContains(values, search)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private boolean isWordFile(Path path) {
         String fileName = path.getFileName().toString();
         return fileName.endsWith(".def")
-                && !fileName.equals(SYNONYMS_FILE)
-                && !fileName.equals(ANTONYMS_FILE);
+                && !fileName.equals(SYNONYMS_NOUN_FILE)
+                && !fileName.equals(SYNONYMS_VERB_FILE)
+                && !fileName.equals(SYNONYMS_ADJECTIVE_FILE)
+                && !fileName.equals(SYNONYMS_ADVERB_FILE)
+                && !fileName.endsWith("_antonym.def");
     }
 
     private int parseInt(String value, int defaultValue) {
@@ -569,8 +817,10 @@ public class DictionaryServiceImpl implements DictionaryService {
     private void ensureDatabaseDir() {
         try {
             Files.createDirectories(Paths.get(DATABASE_DIR));
-            createFileIfMissing(Paths.get(DATABASE_DIR, SYNONYMS_FILE));
-            createFileIfMissing(Paths.get(DATABASE_DIR, ANTONYMS_FILE));
+            createFileIfMissing(Paths.get(DATABASE_DIR, SYNONYMS_NOUN_FILE));
+            createFileIfMissing(Paths.get(DATABASE_DIR, SYNONYMS_VERB_FILE));
+            createFileIfMissing(Paths.get(DATABASE_DIR, SYNONYMS_ADJECTIVE_FILE));
+            createFileIfMissing(Paths.get(DATABASE_DIR, SYNONYMS_ADVERB_FILE));
         } catch (IOException e) {
             throw new RuntimeException("Cannot create database folder", e);
         }
@@ -579,6 +829,272 @@ public class DictionaryServiceImpl implements DictionaryService {
     private void createFileIfMissing(Path path) throws IOException {
         if (!Files.exists(path)) {
             Files.createFile(path);
+        }
+    }
+
+    private Path antonymFile(String keyword) {
+        return Paths.get(DATABASE_DIR, sanitizeFileName(keyword) + "_antonym.def");
+    }
+
+    private Map<String, LinkedList<String>> readSynonyms(Word word) {
+        Map<String, LinkedList<String>> result = new HashMap<>();
+
+        for (Definition definition : word.getDefinitions()) {
+            String type = normalizeWordType(definition.getType());
+            if (type == null) {
+                continue; // Skip types that don't have synonym files
+            }
+
+            String fileName = getSynonymFileName(type);
+            if (fileName == null) {
+                continue;
+            }
+
+            Path filePath = Paths.get(DATABASE_DIR, fileName);
+            if (!Files.exists(filePath)) {
+                continue;
+            }
+
+            Properties properties = new Properties();
+            try (FileInputStream input = new FileInputStream(filePath.toFile())) {
+                properties.load(input);
+            } catch (IOException e) {
+                continue;
+            }
+
+            LinkedList<String> synonyms = findSynonymGroup(properties, word.getKeyword());
+            if (synonyms != null && !synonyms.isEmpty()) {
+                result.put(type, synonyms);
+            }
+        }
+
+        return result;
+    }
+
+    private Map<String, LinkedList<String>> readAntonyms(String keyword) {
+        Map<String, LinkedList<String>> result = new HashMap<>();
+        Path filePath = antonymFile(keyword);
+
+        if (!Files.exists(filePath)) {
+            return result;
+        }
+
+        Properties properties = new Properties();
+        try (FileInputStream input = new FileInputStream(filePath.toFile())) {
+            properties.load(input);
+        } catch (IOException e) {
+            return result;
+        }
+
+        for (String key : properties.stringPropertyNames()) {
+            String[] words = properties.getProperty(key, "").split("=");
+            LinkedList<String> antonyms = new LinkedList<>();
+            for (String word : words) {
+                String cleanWord = word.trim();
+                if (!cleanWord.isEmpty()) {
+                    antonyms.add(cleanWord);
+                }
+            }
+            if (!antonyms.isEmpty()) {
+                result.put(key, antonyms);
+            }
+        }
+
+        return result;
+    }
+
+    private void saveAntonyms(String keyword, Map<String, LinkedList<String>> antonyms) {
+        if (antonyms == null || antonyms.isEmpty()) {
+            try {
+                Files.deleteIfExists(antonymFile(keyword));
+            } catch (IOException e) {
+                // Ignore
+            }
+            return;
+        }
+
+        Properties properties = new Properties();
+        for (Map.Entry<String, LinkedList<String>> entry : antonyms.entrySet()) {
+            String key = entry.getKey();
+            LinkedList<String> values = entry.getValue();
+            properties.setProperty(key, String.join("=", values));
+        }
+
+        try (FileOutputStream output = new FileOutputStream(antonymFile(keyword).toFile())) {
+            properties.store(output, "Antonyms for " + keyword);
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot save antonyms for: " + keyword, e);
+        }
+    }
+
+    private String normalizeWordType(String type) {
+        if (type == null || type.isBlank()) {
+            return null;
+        }
+
+        String lower = type.toLowerCase();
+        if (lower.startsWith("noun") || lower.equals("n")) {
+            return "noun";
+        } else if (lower.startsWith("verb") || lower.equals("v")) {
+            return "verb";
+        } else if (lower.startsWith("adjective") || lower.startsWith("adj") || lower.equals("a")) {
+            return "adjective";
+        } else if (lower.startsWith("adverb") || lower.equals("adv")) {
+            return "adverb";
+        }
+
+        return null;
+    }
+
+    private String getSynonymFileName(String type) {
+        switch (type) {
+            case "noun":
+                return SYNONYMS_NOUN_FILE;
+            case "verb":
+                return SYNONYMS_VERB_FILE;
+            case "adjective":
+                return SYNONYMS_ADJECTIVE_FILE;
+            case "adverb":
+                return SYNONYMS_ADVERB_FILE;
+            default:
+                return null;
+        }
+    }
+
+    private LinkedList<String> findSynonymGroup(Properties properties, String keyword) {
+        String sanitizedKeyword = sanitizeFileName(keyword).toLowerCase();
+
+        for (String key : properties.stringPropertyNames()) {
+            String raw = properties.getProperty(key, "");
+            String[] words = raw.split("=");
+
+            for (String word : words) {
+                String cleanWord = word.trim().toLowerCase();
+                if (cleanWord.equals(sanitizedKeyword)) {
+                    LinkedList<String> synonyms = new LinkedList<>();
+                    for (String w : words) {
+                        String cleanW = w.trim();
+                        if (!cleanW.isEmpty() && !cleanW.equalsIgnoreCase(keyword)) {
+                            synonyms.add(cleanW);
+                        }
+                    }
+                    return synonyms;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private void updateSynonymsInFiles(Word word, String oldKeyword, String newKeyword) {
+        for (Definition definition : word.getDefinitions()) {
+            String type = normalizeWordType(definition.getType());
+            if (type == null) {
+                continue;
+            }
+
+            String fileName = getSynonymFileName(type);
+            if (fileName == null) {
+                continue;
+            }
+
+            Path filePath = Paths.get(DATABASE_DIR, fileName);
+            if (!Files.exists(filePath)) {
+                continue;
+            }
+
+            Properties properties = new Properties();
+            try (FileInputStream input = new FileInputStream(filePath.toFile())) {
+                properties.load(input);
+            } catch (IOException e) {
+                continue;
+            }
+
+            boolean updated = false;
+            for (String key : properties.stringPropertyNames()) {
+                String[] words = properties.getProperty(key, "").split("=");
+                Set<String> updatedWords = new LinkedHashSet<>();
+
+                for (String w : words) {
+                    String cleanWord = w.trim();
+                    if (!cleanWord.isEmpty()) {
+                        if (sameKeyword(cleanWord, oldKeyword)) {
+                            updatedWords.add(newKeyword);
+                            updated = true;
+                        } else {
+                            updatedWords.add(cleanWord);
+                        }
+                    }
+                }
+
+                if (updated) {
+                    properties.setProperty(key, String.join("=", updatedWords));
+                }
+            }
+
+            if (updated) {
+                try (FileOutputStream output = new FileOutputStream(filePath.toFile())) {
+                    properties.store(output, "Synonyms " + type);
+                } catch (IOException e) {
+                    throw new RuntimeException("Cannot update synonyms file: " + fileName, e);
+                }
+            }
+        }
+    }
+
+    private void removeSynonymFromAllFiles(String keyword) {
+        String[] synonymFiles = {
+            SYNONYMS_NOUN_FILE,
+            SYNONYMS_VERB_FILE,
+            SYNONYMS_ADJECTIVE_FILE,
+            SYNONYMS_ADVERB_FILE
+        };
+
+        for (String fileName : synonymFiles) {
+            Path filePath = Paths.get(DATABASE_DIR, fileName);
+            if (!Files.exists(filePath)) {
+                continue;
+            }
+
+            Properties properties = new Properties();
+            try (FileInputStream input = new FileInputStream(filePath.toFile())) {
+                properties.load(input);
+            } catch (IOException e) {
+                continue;
+            }
+
+            boolean updated = false;
+            for (String key : properties.stringPropertyNames()) {
+                String[] words = properties.getProperty(key, "").split("=");
+                Set<String> updatedWords = new LinkedHashSet<>();
+
+                for (String w : words) {
+                    String cleanWord = w.trim();
+                    if (!cleanWord.isEmpty()) {
+                        if (!sameKeyword(cleanWord, keyword)) {
+                            updatedWords.add(cleanWord);
+                        } else {
+                            updated = true;
+                        }
+                    }
+                }
+
+                if (updated) {
+                    if (updatedWords.isEmpty()) {
+                        properties.remove(key);
+                    } else {
+                        properties.setProperty(key, String.join("=", updatedWords));
+                    }
+                }
+            }
+
+            if (updated) {
+                try (FileOutputStream output = new FileOutputStream(filePath.toFile())) {
+                    properties.store(output, "Synonyms");
+                } catch (IOException e) {
+                    throw new RuntimeException("Cannot update synonyms file: " + fileName, e);
+                }
+            }
         }
     }
 }
